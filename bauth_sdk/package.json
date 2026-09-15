@@ -15,7 +15,7 @@
   },
   "files": ["dist"],
   "scripts": {
-    "generate": "openapi-typescript ../../bauth_server/openapi.json -o src/schema.ts",
+    "generate": "openapi-typescript ../bauth_server/openapi.json -o src/schema.ts",
     "build": "tsc",
     "check": "tsc --noEmit",
     "test": "npm run build && node --test test/"
