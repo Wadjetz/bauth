@@ -73,6 +73,24 @@ pub fn magic_link(to: &str, app_name: &str, link: &str, code: &str) -> Email {
     }
 }
 
+/// A magic link email to an address without an account: using the code or link creates it.
+pub fn magic_signup(to: &str, app_name: &str, link: &str, code: &str) -> Email {
+    Email {
+        to: to.to_owned(),
+        subject: format!("Crée ton compte {app_name}"),
+        text: format!(
+            "Bonjour,\n\n\
+             Pour créer ton compte {app_name}, saisis ce code sur l'appareil où tu l'as demandé :\n\n\
+             {code}\n\n\
+             Ou ouvre ce lien sur cet appareil :\n\n\
+             {link}\n\n\
+             Le code et le lien expirent dans 15 minutes et ne servent qu'une fois.\n\
+             Ne communique ce code à personne.\n\
+             Si tu n'as rien demandé, ignore cet email : aucun compte ne sera créé.\n"
+        ),
+    }
+}
+
 /// Sent when a magic link login verifies an account whose password was set before its address
 /// was confirmed: whoever registered may not be the owner.
 pub fn unverified_password_removed(to: &str) -> Email {

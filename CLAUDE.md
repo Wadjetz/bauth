@@ -54,7 +54,7 @@ several queries take `&mut DbConnection`). The rest of the tree is what `ls` sho
 - Migration table `bauth._sqlx_migrations` (see `sqlx.toml`). Reversible migrations (`sqlx migrate add -r`).
 - Tables: `users`, `password_credentials`, `email_verifications`, `login_flows`, `authorization_codes`,
   `signing_keys`, `sessions`, `refresh_tokens` (`parent_id`, `superseded_at`), `password_resets`,
-  `magic_links` (`code_hash`, `code_failures`), `email_changes`.
+  `magic_links` (`user_id` NULL = sign-up, `code_hash`, `code_failures`), `email_changes`.
 - UUID v7 ids (`uuidv7()` default, Postgres 18), `timestamptz` ↔ `DateTime<Utc>`.
 - Emails normalized **in SQL** with `lower(btrim($1))` on insert and lookup.
 
@@ -68,15 +68,20 @@ several queries take `&mut DbConnection`). The rest of the tree is what `ls` sho
 - Anyone can register an address they don't own: a magic link/code login that verifies an account
   deletes its password and revokes its sessions (`magic_link::log_in`, notice email sent). Unverified
   accounts are purged after 7 days. Lock order in those transactions: `users` row, then credentials.
+- Passwordless sign-up goes through the magic link, never `/registration` (one email only): an unknown
+  address gets a "create your account" email when the client `allow_signup` (row with `user_id` NULL);
+  the account is created, verified and without password, when the link or code is used — or joined if
+  it was registered meanwhile (same unverified-account rule as above). Nothing exists before.
 - Magic link email = link + 6-digit code, one `magic_links` row: using either consumes it. The code
   (`POST /flows/login/{id}/magic-code`) is typed on the device that asked (mobile mail apps open links
   elsewhere). Only 10^6 values, so (`magic_code.rs`, `routes/magic_link.rs`): looked up by flow, newest
-  email of the flow only, consumed after 5 wrong codes, and at most 10 wrong codes per account over
-  24 h (sum of `code_failures`) — past that codes are refused for the account, links still work. Checks
-  run with the user row locked (`FOR NO KEY UPDATE`) so concurrent guesses can't overshoot. HMAC keyed by
+  email of the flow only, consumed after 5 wrong codes, and at most 10 wrong codes per address over
+  24 h (sum of `code_failures` by `email`) — past that codes are refused for the address, links still
+  work. Checks run under an advisory xact lock on the address (sign-ups have no user row) so concurrent
+  guesses can't overshoot. HMAC keyed by
   `MasterKey::derive("magic_code")` over `flow_id || code`; 3 emails per flow (counted on `login_flows`
   whether the account exists or not); `invalid_code` for wrong code / unknown flow / no email sent /
-  account budget spent.
+  address budget spent.
 
 ## Security invariants (keep them when changing code)
 - Secrets sent to users are random 256-bit tokens; only their SHA-256 is stored. Sole exception: the
@@ -116,7 +121,7 @@ several queries take `&mut DbConnection`). The rest of the tree is what `ls` sho
   Postgres database per test (`#[sqlx::test]`), emails captured by `Mailer::capture()`.
   `TestApp` has helpers (`register_verified`, `login`, `refresh`, `last_token`, `age_rotations`…).
   Files: `oauth` (PKCE, code replay, refresh rotation), `accounts` (verification, no enumeration,
-  reset, magic link and code, stale links), `me` (session revocation, password change, deletion),
+  reset, magic link and code, passwordless sign-up, stale links), `me` (session revocation, password change, deletion),
   `protections` (rate limits, per-flow email cap, X-Forwarded-For, CORS), `jobs` (purge retention and lock),
   `key_rotation` (prepublication, handover, unpublication, emergency retirement).
 - `DATABASE_URL` points to the dedicated `postgres-test` compose service (port 5440, in-memory): sqlx

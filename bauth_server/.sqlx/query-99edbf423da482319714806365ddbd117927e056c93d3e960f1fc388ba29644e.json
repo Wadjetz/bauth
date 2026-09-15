@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT id, user_id, email, code_hash\n        FROM bauth.magic_links\n        WHERE id = (\n            SELECT id FROM bauth.magic_links\n            WHERE flow_id = $1\n            ORDER BY created_at DESC, id DESC\n            LIMIT 1\n        )\n        AND user_id = $2\n        AND consumed_at IS NULL AND expires_at > now() AND code_failures < $3\n        AND (\n            SELECT coalesce(sum(code_failures), 0) FROM bauth.magic_links\n            WHERE user_id = $2 AND created_at > now() - interval '1 day'\n        ) < $4\n        ",
+  "query": "\n        SELECT id, user_id, email, code_hash\n        FROM bauth.magic_links\n        WHERE id = (\n            SELECT id FROM bauth.magic_links\n            WHERE flow_id = $1\n            ORDER BY created_at DESC, id DESC\n            LIMIT 1\n        )\n        AND email = $2\n        AND consumed_at IS NULL AND expires_at > now() AND code_failures < $3\n        AND (\n            SELECT coalesce(sum(code_failures), 0) FROM bauth.magic_links\n            WHERE email = $2 AND created_at > now() - interval '1 day'\n        ) < $4\n        ",
   "describe": {
     "columns": [
       {
@@ -51,17 +51,17 @@
     "parameters": {
       "Left": [
         "Uuid",
-        "Uuid",
+        "Text",
         "Int4",
         "Int8"
       ]
     },
     "nullable": [
       false,
-      false,
+      true,
       false,
       false
     ]
   },
-  "hash": "0798073adc445f8e20e24841a7d3849a2342cc193639b0899d7026147d5e9059"
+  "hash": "99edbf423da482319714806365ddbd117927e056c93d3e960f1fc388ba29644e"
 }

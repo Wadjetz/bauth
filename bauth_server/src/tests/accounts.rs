@@ -118,14 +118,6 @@ async fn magic_link_logs_in_and_verifies_the_email(db: PgPool) {
     app.register("alice@example.com").await;
     let flow_id = app.start_flow().await;
 
-    let unknown = app
-        .post(&format!("/flows/login/{flow_id}/magic-link"))
-        .json(json!({ "email": "nobody@example.com" }))
-        .send()
-        .await;
-    assert_eq!(unknown.status, StatusCode::ACCEPTED);
-    assert!(app.emails_to("nobody@example.com").is_empty());
-
     app.post(&format!("/flows/login/{flow_id}/magic-link"))
         .json(json!({ "email": "alice@example.com" }))
         .send()
@@ -329,15 +321,103 @@ async fn concurrent_magic_codes_cannot_exceed_the_account_budget(db: PgPool) {
 }
 
 #[sqlx::test]
-async fn magic_code_answers_the_same_without_account_or_email(db: PgPool) {
+async fn email_login_signs_up_an_unknown_address_with_a_single_email(db: PgPool) {
     let app = TestApp::new(db).await;
     let flow_id = app.start_flow().await;
+    let sent = app.request_magic_link(&flow_id, " Carol@Example.com").await;
+    assert_eq!(sent.status, StatusCode::ACCEPTED);
+    let emails = app.emails_to("carol@example.com");
+    assert_eq!(emails.len(), 1, "one email, to the normalized address");
+    assert!(emails[0].subject.contains("Crée"), "{}", emails[0].subject);
+    let count_users = || async {
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM bauth.users")
+            .fetch_one(&app.db)
+            .await
+            .unwrap()
+    };
+    assert_eq!(
+        count_users().await,
+        0,
+        "nothing exists before the code is used"
+    );
+
+    let login = app
+        .submit_magic_code(&flow_id, &app.last_magic_code("carol@example.com"))
+        .await;
+    assert_eq!(login.status, StatusCode::OK, "{}", login.body);
+    let tokens = app
+        .exchange(&login.str("code"), CODE_VERIFIER, REDIRECT_URI)
+        .await;
+    let me = app
+        .get("/me")
+        .bearer(&tokens.str("access_token"))
+        .send()
+        .await;
+    assert_eq!(me.body["email"], "carol@example.com");
+    assert_eq!(me.body["email_verified"], true);
+    assert_eq!(
+        app.emails_to("carol@example.com").len(),
+        1,
+        "no verification email"
+    );
+
+    // Next time it is a login to the same account, and there is no password to guess.
+    let flow_id = app.start_flow().await;
+    app.request_magic_link(&flow_id, "carol@example.com").await;
+    let email = app.emails_to("carol@example.com").pop().unwrap();
+    assert!(!email.subject.contains("Crée"), "{}", email.subject);
+    let again = app
+        .submit_magic_code(&flow_id, &app.last_magic_code("carol@example.com"))
+        .await;
+    assert_eq!(again.status, StatusCode::OK, "{}", again.body);
+    assert_eq!(count_users().await, 1);
+    let password = app
+        .submit_password(&app.start_flow().await, "carol@example.com", PASSWORD)
+        .await;
+    assert_eq!(password.code(), "invalid_credentials");
+}
+
+#[sqlx::test]
+async fn sign_up_link_joins_an_account_registered_meanwhile(db: PgPool) {
+    let app = TestApp::new(db).await;
+    let flow_id = app.start_flow().await;
+    app.request_magic_link(&flow_id, "dave@example.com").await;
+    let token = app.last_token("dave@example.com");
+    // Someone registers the address with their own password before the owner uses the link.
+    app.register("dave@example.com").await;
+
+    let login = app
+        .post("/magic-link/confirm")
+        .json(json!({ "token": token }))
+        .send()
+        .await;
+    assert_eq!(login.status, StatusCode::OK, "{}", login.body);
+    let squatter = app
+        .submit_password(&app.start_flow().await, "dave@example.com", PASSWORD)
+        .await;
+    assert_eq!(squatter.code(), "invalid_credentials");
+    let notice = app.emails_to("dave@example.com").pop().unwrap();
+    assert!(
+        notice.subject.contains("mot de passe"),
+        "{}",
+        notice.subject
+    );
+}
+
+#[sqlx::test]
+async fn magic_code_answers_the_same_without_account_or_email(db: PgPool) {
+    let app = TestApp::new(db).await;
+    // A client without sign-up: no email goes to an unknown address.
+    let flow_id = app
+        .start_flow_for("closed", "https://closed.example.com/callback")
+        .await;
     assert_eq!(
         app.submit_magic_code(&flow_id, "123456").await.code(),
         "invalid_code"
     );
     let unknown = app.request_magic_link(&flow_id, "nobody@example.com").await;
     assert_eq!(unknown.status, StatusCode::ACCEPTED);
+    assert!(app.emails_to("nobody@example.com").is_empty());
     assert_eq!(
         app.submit_magic_code(&flow_id, "123456").await.code(),
         "invalid_code"

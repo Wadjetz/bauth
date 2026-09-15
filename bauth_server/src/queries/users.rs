@@ -58,6 +58,25 @@ where
     .await
 }
 
+/// `find_by_email`, locking the account until the transaction ends.
+pub async fn lock_by_email<'e, E>(executor: E, email: &str) -> Result<Option<User>, sqlx::Error>
+where
+    E: Executor<'e, Database = Db>,
+{
+    sqlx::query_as!(
+        User,
+        r#"
+        SELECT id, email, email_verified_at, disabled_at, created_at
+        FROM bauth.users
+        WHERE email = lower(btrim($1))
+        FOR NO KEY UPDATE
+        "#,
+        email
+    )
+    .fetch_optional(executor)
+    .await
+}
+
 pub async fn find_by_id<'e, E>(executor: E, id: Uuid) -> Result<Option<User>, sqlx::Error>
 where
     E: Executor<'e, Database = Db>,

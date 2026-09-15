@@ -96,7 +96,10 @@ export function createBauthClient(options: BauthClientOptions) {
       return exchangeCode(await this.submitPassword(flow.flowId, email, password), flow.codeVerifier)
     },
 
-    /** Emails a login link and a 6-digit code. Same answer whether the account exists or not. */
+    /**
+     * Emails a link and a 6-digit code: to log in, or to create the account on first use when the client
+     * allows sign-up (no password, one email). Same answer whether the account exists or not.
+     */
     async requestMagicLink(flowId: string, email: string): Promise<void> {
       const params = { path: { flow_id: flowId } }
       await unwrap(api.POST("/flows/login/{flow_id}/magic-link", { params, body: { email } }))

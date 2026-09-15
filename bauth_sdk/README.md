@@ -41,6 +41,8 @@ try {
 
 One email carries both a link and a code. The code is typed on the screen that asked for the email
 (mobile mail apps often open links in another browser); the link works when opened on the same device.
+It is also the passwordless sign-up: for an unknown address (and a client with `allow_signup`), the
+account is created, email verified, when the code or link is used. No second email.
 
 ```ts
 const flow = await bauth.startLogin()

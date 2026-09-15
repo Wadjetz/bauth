@@ -4,22 +4,24 @@ use uuid::Uuid;
 
 use crate::db::{Db, DbConnection};
 
+/// `user_id` is `None` for an address without an account. Returns the normalized address.
 pub async fn create<'e, E>(
     executor: E,
     flow_id: Uuid,
-    user_id: Uuid,
+    user_id: Option<Uuid>,
     email: &str,
     token_hash: &[u8],
     code_hash: &[u8],
     expires_at: DateTime<Utc>,
-) -> Result<(), sqlx::Error>
+) -> Result<String, sqlx::Error>
 where
     E: Executor<'e, Database = Db>,
 {
-    sqlx::query!(
+    sqlx::query_scalar!(
         r#"
         INSERT INTO bauth.magic_links (flow_id, user_id, email, token_hash, code_hash, expires_at)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        VALUES ($1, $2, lower(btrim($3)), $4, $5, $6)
+        RETURNING email
         "#,
         flow_id,
         user_id,
@@ -28,14 +30,14 @@ where
         code_hash,
         expires_at
     )
-    .execute(executor)
-    .await?;
-    Ok(())
+    .fetch_one(executor)
+    .await
 }
 
 pub struct ConsumedMagicLink {
     pub flow_id: Uuid,
-    pub user_id: Uuid,
+    /// `None` if the address had no account when the email was sent.
+    pub user_id: Option<Uuid>,
     pub email: String,
 }
 
@@ -63,24 +65,26 @@ where
 
 pub struct CodeCandidate {
     pub id: Uuid,
-    pub user_id: Uuid,
+    /// `None` if the address had no account when the email was sent.
+    pub user_id: Option<Uuid>,
     pub email: String,
     pub code_hash: Vec<u8>,
 }
 
 /// The link a code typed on this flow is checked against: the newest link of the flow (each new
-/// email would otherwise add attempts), still pending, under `max_link_failures`, and whose user
-/// is under `max_user_failures` over the last day. Locks the user until the transaction ends, so
-/// concurrent attempts on any of their links are checked one after another.
+/// email would otherwise add attempts), still pending, under `max_link_failures`, and whose address
+/// is under `max_address_failures` over the last day. Takes a lock on the address until the
+/// transaction ends, so concurrent attempts on any of its links are checked one after another. The
+/// address, not the account: a sign-up email has no account yet.
 pub async fn find_code_candidate(
     conn: &mut DbConnection,
     flow_id: Uuid,
     max_link_failures: i32,
-    max_user_failures: i64,
+    max_address_failures: i64,
 ) -> Result<Option<CodeCandidate>, sqlx::Error> {
-    let Some(user_id) = sqlx::query_scalar!(
+    let Some(email) = sqlx::query_scalar!(
         r#"
-        SELECT user_id FROM bauth.magic_links
+        SELECT email FROM bauth.magic_links
         WHERE flow_id = $1
         ORDER BY created_at DESC, id DESC
         LIMIT 1
@@ -94,10 +98,10 @@ pub async fn find_code_candidate(
     };
     // Separate statement: the next one must see failures committed while waiting for the lock.
     sqlx::query!(
-        "SELECT id FROM bauth.users WHERE id = $1 FOR NO KEY UPDATE",
-        user_id
+        r#"SELECT 1 AS "locked!" FROM pg_advisory_xact_lock(hashtextextended('bauth.magic_code:' || $1, 0))"#,
+        email
     )
-    .fetch_optional(&mut *conn)
+    .fetch_one(&mut *conn)
     .await?;
 
     sqlx::query_as!(
@@ -111,17 +115,17 @@ pub async fn find_code_candidate(
             ORDER BY created_at DESC, id DESC
             LIMIT 1
         )
-        AND user_id = $2
+        AND email = $2
         AND consumed_at IS NULL AND expires_at > now() AND code_failures < $3
         AND (
             SELECT coalesce(sum(code_failures), 0) FROM bauth.magic_links
-            WHERE user_id = $2 AND created_at > now() - interval '1 day'
+            WHERE email = $2 AND created_at > now() - interval '1 day'
         ) < $4
         "#,
         flow_id,
-        user_id,
+        email,
         max_link_failures,
-        max_user_failures
+        max_address_failures
     )
     .fetch_optional(&mut *conn)
     .await

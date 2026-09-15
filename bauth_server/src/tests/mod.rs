@@ -52,6 +52,7 @@ magic_link_url = "http://localhost:8025/auth/magic-link"
 id = "closed"
 name = "Closed"
 redirect_uris = ["https://closed.example.com/callback"]
+magic_link_url = "https://closed.example.com/auth/magic-link"
 "#;
 
 pub struct TestApp {
@@ -278,11 +279,15 @@ impl TestApp {
     }
 
     pub async fn start_flow(&self) -> String {
+        self.start_flow_for(CLIENT_ID, REDIRECT_URI).await
+    }
+
+    pub async fn start_flow_for(&self, client_id: &str, redirect_uri: &str) -> String {
         let flow = self
             .post("/flows/login")
             .json(json!({
-                "client_id": CLIENT_ID,
-                "redirect_uri": REDIRECT_URI,
+                "client_id": client_id,
+                "redirect_uri": redirect_uri,
                 "code_challenge": CODE_CHALLENGE,
                 "code_challenge_method": "S256",
             }))

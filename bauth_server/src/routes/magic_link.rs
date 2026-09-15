@@ -21,10 +21,10 @@ const MAGIC_LINK_TTL: TimeDelta = TimeDelta::minutes(15);
 const MAX_EMAILS_PER_FLOW: i32 = 3;
 /// Wrong codes on one email before it is consumed.
 const MAX_CODE_FAILURES_PER_EMAIL: i32 = 5;
-/// Wrong codes on one account over a day, across flows. Emails are limited per address, not per
+/// Wrong codes on one address over a day, across flows. Emails are limited per address, not per
 /// flow: without this, new flows would keep adding guesses. Once reached, codes stop working for
-/// the account (links still do).
-const MAX_CODE_FAILURES_PER_USER: i64 = 10;
+/// the address (links still do).
+const MAX_CODE_FAILURES_PER_ADDRESS: i64 = 10;
 
 #[derive(Deserialize, ToSchema)]
 pub struct MagicLinkRequest {
@@ -50,13 +50,14 @@ pub struct MagicLinkResponse {
     params(("flow_id" = Uuid, Path, description = "Returned by `POST /flows/login`")),
     request_body = MagicLinkRequest,
     responses(
-        (status = 202, description = "Same answer whether the account exists or not", body = MagicLinkResponse),
+        (status = 202, description = "Same answer whether the account exists, is created on first use, or no email is sent", body = MagicLinkResponse),
         (status = 400, description = "`invalid_request`, `flow_expired`, `invalid_client`, `invalid_email`", body = crate::errors::ErrorBody),
         (status = 429, description = "`rate_limited`; after 3 emails on one flow, until the flow expires: start a new one", body = crate::errors::ErrorBody),
     )
 )]
-/// Emails a login link and a 6-digit code for this flow if the account exists. Always answers
-/// the same way. A new email disables the code of the previous one.
+/// Emails a link and a 6-digit code for this flow: to log in if the account exists, or to create
+/// it (verified, without password) when the client allows sign-up. Nothing is created before the
+/// link or code is used. Always answers the same way. A new email disables the previous code.
 pub async fn request(
     State(state): State<AppState>,
     client_ip: ClientIp,
@@ -90,30 +91,34 @@ pub async fn request(
         .email_per_address
         .check(&rate_limit::email_key(&input.email))?;
 
-    if let Some(user) = queries::users::find_by_email(&state.db, &input.email).await?
-        && user.disabled_at.is_none()
-    {
+    let user_id = match queries::users::find_by_email(&state.db, &input.email).await? {
+        Some(user) if user.disabled_at.is_none() => Some(Some(user.id)),
+        Some(_) => None,
+        // Sign-up: the account is only created once the email proves the address is theirs.
+        None if client.allow_signup => Some(None),
+        None => None,
+    };
+    if let Some(user_id) = user_id {
         let token = token::generate();
         let code = state.magic_code_key.generate(flow_id);
         let expires_at = Utc::now() + MAGIC_LINK_TTL;
-        queries::magic_links::create(
+        let email = queries::magic_links::create(
             &state.db,
             flow_id,
-            user.id,
-            &user.email,
+            user_id,
+            &input.email,
             &token.hash,
             &code.hash,
             expires_at,
         )
         .await?;
         let link = format!("{magic_link_url}#token={}", token.plain);
-        state.mailer.send_in_background(emails::magic_link(
-            &user.email,
-            &client.name,
-            &link,
-            &code.plain,
-        ));
-        tracing::info!(user_id = %user.id, %flow_id, "magic link sent");
+        let message = match user_id {
+            Some(_) => emails::magic_link(&email, &client.name, &link, &code.plain),
+            None => emails::magic_signup(&email, &client.name, &link, &code.plain),
+        };
+        state.mailer.send_in_background(message);
+        tracing::info!(?user_id, %flow_id, "magic link sent");
     }
 
     let response = MagicLinkResponse {
@@ -139,7 +144,8 @@ pub struct ConfirmRequest {
         (status = 429, description = "`rate_limited`", body = crate::errors::ErrorBody),
     )
 )]
-/// Called by the app page the link opens. Completes the login flow the link was requested from.
+/// Called by the app page the link opens. Completes the login flow the link was requested from,
+/// creating the account if the email was a sign-up.
 pub async fn confirm(
     State(state): State<AppState>,
     client_ip: ClientIp,
@@ -162,7 +168,7 @@ pub async fn confirm(
     .await?;
     tx.commit().await?;
 
-    tracing::info!(user_id = %link.user_id, flow_id = %link.flow_id, "magic link login succeeded");
+    tracing::info!(user_id = %login.user_id, flow_id = %link.flow_id, "magic link login succeeded");
     Ok(AppJson(login.notify(&state, &link.email)))
 }
 
@@ -186,9 +192,10 @@ pub struct MagicCodeRequest {
         (status = 429, description = "`rate_limited`", body = crate::errors::ErrorBody),
     )
 )]
-/// Completes the flow with the code of its magic link email, typed on the device that asked for it.
-/// Only the newest email's code works, for 5 wrong attempts (10 per account a day). A wrong code,
-/// an unknown flow and no email sent all answer `invalid_code`.
+/// Completes the flow with the code of its magic link email, typed on the device that asked for it,
+/// creating the account if the email was a sign-up. Only the newest email's code works, for 5 wrong
+/// attempts (10 per address a day). A wrong code, an unknown flow and no email sent all answer
+/// `invalid_code`.
 pub async fn confirm_code(
     State(state): State<AppState>,
     client_ip: ClientIp,
@@ -205,7 +212,7 @@ pub async fn confirm_code(
         &mut tx,
         flow_id,
         MAX_CODE_FAILURES_PER_EMAIL,
-        MAX_CODE_FAILURES_PER_USER,
+        MAX_CODE_FAILURES_PER_ADDRESS,
     )
     .await?
     else {
@@ -223,7 +230,7 @@ pub async fn confirm_code(
         .await?;
         // The failure must be kept even though the request fails.
         tx.commit().await?;
-        tracing::info!(user_id = %link.user_id, %flow_id, failures, "wrong magic code");
+        tracing::info!(user_id = ?link.user_id, %flow_id, failures, "wrong magic code");
         return Err(ApiError::InvalidCode);
     }
     queries::magic_links::consume_by_id(&mut *tx, link.id).await?;
@@ -237,12 +244,13 @@ pub async fn confirm_code(
     .await?;
     tx.commit().await?;
 
-    tracing::info!(user_id = %link.user_id, %flow_id, "magic code login succeeded");
+    tracing::info!(user_id = %login.user_id, %flow_id, "magic code login succeeded");
     Ok(AppJson(login.notify(&state, &link.email)))
 }
 
 struct MagicLogin {
     response: LoginResponse,
+    user_id: Uuid,
     /// The account was unverified and had a password, now removed.
     removed_password: bool,
 }
@@ -260,39 +268,66 @@ impl MagicLogin {
 }
 
 /// What a checked link or code does: logs the user in on the flow the email was requested from.
+/// `user_id` is the account the email was sent for, `None` for a sign-up: the account is found by
+/// address (created meanwhile) or created, verified and without password.
 /// `stale` is the error when the email went to an address the account no longer uses.
 async fn log_in(
     conn: &mut DbConnection,
     flow_id: Uuid,
-    user_id: Uuid,
+    user_id: Option<Uuid>,
     email: &str,
     stale: ApiError,
 ) -> Result<MagicLogin, ApiError> {
     // Locked: a verification confirmed meanwhile must not be missed by the check below.
-    let Some(user) = queries::users::lock_by_id(&mut *conn, user_id).await? else {
-        return Err(stale);
+    let existing = match user_id {
+        Some(id) => match queries::users::lock_by_id(&mut *conn, id).await? {
+            Some(user) => user,
+            None => return Err(stale),
+        },
+        None => match queries::users::create(&mut *conn, email).await? {
+            Some(user) => {
+                queries::users::mark_email_verified(&mut *conn, user.id, &user.email).await?;
+                tracing::info!(user_id = %user.id, "account created by email");
+                return finish(conn, flow_id, user.id, false).await;
+            }
+            // Registered since the email was sent: the address is proven for that account too.
+            None => match queries::users::lock_by_email(&mut *conn, email).await? {
+                Some(user) => user,
+                None => return Err(stale),
+            },
+        },
     };
-    if user.disabled_at.is_some() {
+    if existing.disabled_at.is_some() {
         return Err(ApiError::AccountDisabled);
     }
-    if user.email != email {
+    if existing.email != email {
         return Err(stale);
     }
     let mut removed_password = false;
-    if user.email_verified_at.is_none() {
+    if existing.email_verified_at.is_none() {
         // Anyone can register an address they don't own, with a password of their choosing.
         // Its owner proves they own it only now: nothing set up before can be trusted.
-        removed_password = queries::password_credentials::delete(&mut *conn, user.id).await?;
-        let revoked = queries::sessions::revoke_all_for_user(&mut *conn, user.id).await?;
-        tracing::info!(user_id = %user.id, removed_password, revoked_sessions = revoked, "unverified account claimed by email");
+        removed_password = queries::password_credentials::delete(&mut *conn, existing.id).await?;
+        let revoked = queries::sessions::revoke_all_for_user(&mut *conn, existing.id).await?;
+        tracing::info!(user_id = %existing.id, removed_password, revoked_sessions = revoked, "unverified account claimed by email");
     }
     // Receiving the email proves the user owns the address.
-    queries::users::mark_email_verified(&mut *conn, user.id, &user.email).await?;
-    let response = login_flow::complete(conn, flow_id, user.id)
+    queries::users::mark_email_verified(&mut *conn, existing.id, &existing.email).await?;
+    finish(conn, flow_id, existing.id, removed_password).await
+}
+
+async fn finish(
+    conn: &mut DbConnection,
+    flow_id: Uuid,
+    user_id: Uuid,
+    removed_password: bool,
+) -> Result<MagicLogin, ApiError> {
+    let response = login_flow::complete(conn, flow_id, user_id)
         .await?
         .ok_or(ApiError::FlowExpired)?;
     Ok(MagicLogin {
         response,
+        user_id,
         removed_password,
     })
 }

@@ -66,9 +66,10 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Completes the flow with the code of its magic link email, typed on the device that asked for it.
-         *     Only the newest email's code works, for 5 wrong attempts (10 per account a day). A wrong code,
-         *     an unknown flow and no email sent all answer `invalid_code`.
+         * Completes the flow with the code of its magic link email, typed on the device that asked for it,
+         *     creating the account if the email was a sign-up. Only the newest email's code works, for 5 wrong
+         *     attempts (10 per address a day). A wrong code, an unknown flow and no email sent all answer
+         *     `invalid_code`.
          */
         post: operations["confirm_magic_code"];
         delete?: never;
@@ -87,8 +88,9 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Emails a login link and a 6-digit code for this flow if the account exists. Always answers
-         *     the same way. A new email disables the code of the previous one.
+         * Emails a link and a 6-digit code for this flow: to log in if the account exists, or to create
+         *     it (verified, without password) when the client allows sign-up. Nothing is created before the
+         *     link or code is used. Always answers the same way. A new email disables the previous code.
          */
         post: operations["request_magic_link"];
         delete?: never;
@@ -154,7 +156,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Called by the app page the link opens. Completes the login flow the link was requested from. */
+        /**
+         * Called by the app page the link opens. Completes the login flow the link was requested from,
+         *     creating the account if the email was a sign-up.
+         */
         post: operations["confirm_magic_link"];
         delete?: never;
         options?: never;
@@ -688,7 +693,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Same answer whether the account exists or not */
+            /** @description Same answer whether the account exists, is created on first use, or no email is sent */
             202: {
                 headers: {
                     [name: string]: unknown;
