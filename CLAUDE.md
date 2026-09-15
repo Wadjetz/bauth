@@ -14,7 +14,7 @@ Rewrite started 2026-09 from a 2020 actix prototype: nothing of the old code is 
 
 ## Workspace
 Crates and dependencies: see `Cargo.toml` (`bauth_server` the server, `bauth_client` the token
-`Verifier` for APIs, `bauth_core` shared claims, `bauth_sdk` the `@bauth/client` TS SDK).
+`Verifier` for APIs, `bauth_core` shared claims, `bauth_sdk` the `@wadjetz/bauth-client` TS SDK).
 The SDK needs **TypeScript 5** — `openapi-typescript` requires it.
 
 ## Commands
@@ -129,7 +129,9 @@ several queries take `&mut DbConnection`). The rest of the tree is what `ls` sho
 ## Deployment
 - `Dockerfile`: cargo-chef, `rust:1.98-slim-trixie` → `debian:trixie-slim`, non-root, port 8401,
   `BAUTH_CONFIG=/etc/bauth/bauth.toml` (mount it). Migrations run at startup.
-- `release.yml` (on GitHub release): check then push `ghcr.io/wadjetz/bauth:{latest,sha}`.
+- `release.yml` (on GitHub release): check then push `ghcr.io/wadjetz/bauth:{latest,sha}`; a release tagged
+  `sdk-v<version>` (= `bauth_sdk/package.json` version) instead publishes `@wadjetz/bauth-client` to npm through
+  trusted publishing (OIDC, no token, provenance) — the publish job must stay in `release.yml`.
 - Meant to run behind a reverse proxy (TLS, `X-Forwarded-For` from `BAUTH_TRUSTED_PROXIES`).
 
 ## Audit findings (2026-09-15, full read of `bauth_server`, `bauth_client`, migrations)
