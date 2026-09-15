@@ -9,14 +9,14 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: sdk/client
+        working-directory: bauth_sdk
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
           node-version: "26"
           cache: "npm"
-          cache-dependency-path: sdk/client/package-lock.json
+          cache-dependency-path: bauth_sdk/package-lock.json
       - name: Install dependencies
         run: npm ci
       - name: Generated types match bauth_server/openapi.json

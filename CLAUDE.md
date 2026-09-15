@@ -14,7 +14,7 @@ Rewrite started 2026-09 from a 2020 actix prototype: nothing of the old code is 
 
 ## Workspace
 Crates and dependencies: see `Cargo.toml` (`bauth_server` the server, `bauth_client` the token
-`Verifier` for APIs, `bauth_core` shared claims, `sdk/client` the `@bauth/client` TS SDK).
+`Verifier` for APIs, `bauth_core` shared claims, `bauth_sdk` the `@bauth/client` TS SDK).
 The SDK needs **TypeScript 5** — `openapi-typescript` requires it.
 
 ## Commands
@@ -26,7 +26,7 @@ SQLX_OFFLINE=true cargo clippy --all-features --all --tests -- -D warnings   # w
 SQLX_OFFLINE=true cargo test --all-features --all      # needs DATABASE_URL (see below)
 cd bauth_server && cargo sqlx prepare        # after ANY query change: refresh .sqlx, commit it
 UPDATE_OPENAPI=1 cargo test -p bauth_server openapi   # after ANY route/schema change: refresh openapi.json
-cd sdk/client && npm run generate && npm test         # then refresh the SDK types (CI checks they match)
+cd bauth_sdk && npm run generate && npm test          # then refresh the SDK types (CI checks they match)
 ```
 CI (`.github/workflows/_check_server.yml`) and the Dockerfile build with `SQLX_OFFLINE=true`:
 a stale `bauth_server/.sqlx` breaks both. A stale `bauth_server/openapi.json` fails `cargo test`.
@@ -123,8 +123,8 @@ several queries take `&mut DbConnection`). The rest of the tree is what `ls` sho
   creates `_sqlx_test_*` databases and a `_sqlx_test` schema there. Never the dev Postgres.
   CI runs its own `postgres:18` service. Failed tests keep their database until the next run.
 - Add an integration test for each new flow or security rule; keep them scenario-level, not exhaustive.
-- `bauth_client/tests/verifier.rs` spins a fake JWKS server; `sdk/client/test` mocks fetch.
-- Bruno collection in `bruno/bauth` (folder `me` sets `Bearer {{access_token}}`).
+- `bauth_client/tests/verifier.rs` spins a fake JWKS server; `bauth_sdk/test` mocks fetch.
+- Bruno collection in `bruno` (folder `me` sets `Bearer {{access_token}}`).
 
 ## Deployment
 - `Dockerfile`: cargo-chef, `rust:1.98-slim-trixie` → `debian:trixie-slim`, non-root, port 8401,
