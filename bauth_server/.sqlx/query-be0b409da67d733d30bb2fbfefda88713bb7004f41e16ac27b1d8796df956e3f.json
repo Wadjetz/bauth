@@ -1,0 +1,112 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT r.id, r.rotated_at, r.superseded_at, s.id AS session_id, s.user_id, s.client_id,\n               s.expires_at AS session_expires_at, s.revoked_at AS session_revoked_at\n        FROM bauth.refresh_tokens r\n        JOIN bauth.sessions s ON s.id = r.session_id\n        WHERE r.token_hash = $1\n        FOR UPDATE OF r\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "bauth.refresh_tokens",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "rotated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "bauth.refresh_tokens",
+            "name": "rotated_at"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "superseded_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "bauth.refresh_tokens",
+            "name": "superseded_at"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "session_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "bauth.sessions",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "user_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "bauth.sessions",
+            "name": "user_id"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "client_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "bauth.sessions",
+            "name": "client_id"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "session_expires_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "bauth.sessions",
+            "name": "expires_at"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "session_revoked_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "bauth.sessions",
+            "name": "revoked_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Bytea"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "be0b409da67d733d30bb2fbfefda88713bb7004f41e16ac27b1d8796df956e3f"
+}

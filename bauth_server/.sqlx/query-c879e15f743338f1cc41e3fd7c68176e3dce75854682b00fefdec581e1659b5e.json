@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            DELETE FROM bauth.email_verifications WHERE id IN (\n                SELECT id FROM bauth.email_verifications\n                WHERE expires_at < now() - interval '7 days' OR consumed_at < now() - interval '7 days'\n                LIMIT $1\n            )\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c879e15f743338f1cc41e3fd7c68176e3dce75854682b00fefdec581e1659b5e"
+}

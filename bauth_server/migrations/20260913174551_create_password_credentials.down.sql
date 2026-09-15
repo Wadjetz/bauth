@@ -1,0 +1,1 @@
+DROP TABLE bauth.password_credentials;

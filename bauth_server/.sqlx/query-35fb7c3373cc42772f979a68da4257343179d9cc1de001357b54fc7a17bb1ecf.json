@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM bauth.signing_keys WHERE retired_at < now() - interval '30 days'",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "35fb7c3373cc42772f979a68da4257343179d9cc1de001357b54fc7a17bb1ecf"
+}

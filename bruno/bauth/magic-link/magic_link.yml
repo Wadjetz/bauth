@@ -1,0 +1,25 @@
+info:
+  name: magic_link
+  type: http
+  seq: 2
+
+http:
+  method: POST
+  url: "{{host}}/flows/login/:flow_id/magic-link"
+  params:
+    - name: flow_id
+      value: "{{flow_id}}"
+      type: path
+  body:
+    type: json
+    data: |-
+      {
+        "email": "test@test.fr"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

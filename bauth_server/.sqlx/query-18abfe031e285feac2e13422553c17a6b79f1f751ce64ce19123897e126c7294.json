@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE bauth.refresh_tokens\n        SET superseded_at = now()\n        WHERE parent_id = $1 AND rotated_at IS NULL AND superseded_at IS NULL\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "18abfe031e285feac2e13422553c17a6b79f1f751ce64ce19123897e126c7294"
+}

@@ -1,0 +1,19 @@
+services:
+  # Catches every email sent in development.
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - 1025:1025 # SMTP
+      - 8026:8025 # Web UI → http://localhost:8026 (8025 is left to the app under development)
+
+  # Tests only (`#[sqlx::test]` creates a throwaway database per test). Data lives in memory.
+  # Port 5440 to stay clear of other Postgres instances (5432…).
+  postgres-test:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: bauth
+      POSTGRES_PASSWORD: bauth
+    ports:
+      - 5440:5432
+    tmpfs:
+      - /var/lib/postgresql

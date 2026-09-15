@@ -1,0 +1,30 @@
+{
+  "name": "@bauth/client",
+  "version": "0.1.0",
+  "description": "Framework-agnostic client for the bauth authentication server",
+  "type": "module",
+  "license": "MIT",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "generate": "openapi-typescript ../../bauth_server/openapi.json -o src/schema.ts",
+    "build": "tsc",
+    "check": "tsc --noEmit",
+    "test": "npm run build && node --test test/"
+  },
+  "dependencies": {
+    "openapi-fetch": "^0.17.0"
+  },
+  "devDependencies": {
+    "openapi-typescript": "^7.13.0",
+    "typescript": "^5.9.3"
+  }
+}

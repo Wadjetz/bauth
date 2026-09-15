@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE bauth.refresh_tokens SET rotated_at = now() WHERE id = $1 AND rotated_at IS NULL\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "ef8d8a6db4aea0051c4d3cd0a30a4fae46bf638a212f903f0ef904d322bae9d7"
+}

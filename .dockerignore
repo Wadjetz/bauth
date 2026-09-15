@@ -1,0 +1,18 @@
+# Build outputs and tooling
+target
+.git
+.github
+.editorconfig
+bruno
+data
+
+# Local configuration and secrets: provided at runtime, never baked into the image
+.env
+.env.example
+bauth.toml
+docker-compose.yml
+Dockerfile
+.dockerignore
+
+# Node packages: not needed to build the server
+sdk

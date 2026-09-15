@@ -1,0 +1,22 @@
+info:
+  name: recovery_reset
+  type: http
+  seq: 21
+
+http:
+  method: POST
+  url: "{{host}}/recovery/reset"
+  body:
+    type: json
+    data: |-
+      {
+        "token": "<token from the email link>",
+        "password":"password12345_"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

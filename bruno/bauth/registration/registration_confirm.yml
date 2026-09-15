@@ -1,0 +1,22 @@
+info:
+  name: registration_confirm
+  type: http
+  seq: 9
+
+http:
+  method: POST
+  url: "{{host}}/verification/confirm"
+  body:
+    type: json
+    data: |-
+      {
+        "token": "<token from the email link>"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

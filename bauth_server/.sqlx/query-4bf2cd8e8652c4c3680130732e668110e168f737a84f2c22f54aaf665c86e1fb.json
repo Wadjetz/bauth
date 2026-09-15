@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO bauth.password_credentials (user_id, password_hash)\n        VALUES ($1, $2)\n        ON CONFLICT (user_id) DO UPDATE\n        SET password_hash = EXCLUDED.password_hash, updated_at = now()\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "4bf2cd8e8652c4c3680130732e668110e168f737a84f2c22f54aaf665c86e1fb"
+}

@@ -1,0 +1,25 @@
+info:
+  name: /me/sessions
+  type: http
+  seq: 2
+
+http:
+  method: GET
+  url: "{{host}}/me/sessions"
+  auth: inherit
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        // Pick another device if there is one, otherwise the current session (= logout).
+        if (Array.isArray(res.body) && res.body.length > 0) {
+          const target = res.body.find((s) => !s.current) || res.body[0]
+          bru.setEnvVar("session_id", target.id)
+        }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

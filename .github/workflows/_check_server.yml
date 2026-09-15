@@ -1,0 +1,37 @@
+name: _check_server()
+
+on:
+  workflow_call:
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    services:
+      # Integration tests create a throwaway database per test (`#[sqlx::test]`).
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: bauth
+          POSTGRES_PASSWORD: bauth
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U bauth"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      # No database at compile time: `query!` uses bauth_server/.sqlx. A stale cache fails the build.
+      SQLX_OFFLINE: true
+      DATABASE_URL: postgres://bauth:bauth@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v6
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: rustfmt, clippy
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --all-features --all --tests -- -D warnings
+      - run: cargo test --all-features --all

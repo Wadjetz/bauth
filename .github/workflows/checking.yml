@@ -1,0 +1,13 @@
+name: Checking all
+
+on: [push, workflow_dispatch]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check_server:
+    uses: ./.github/workflows/_check_server.yml
+  check_sdk:
+    uses: ./.github/workflows/_check_sdk.yml
+

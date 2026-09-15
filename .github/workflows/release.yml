@@ -1,0 +1,16 @@
+name: Release all
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  check_server:
+    uses: ./.github/workflows/_check_server.yml
+  build_server:
+    uses: ./.github/workflows/_build_server.yml
+    needs: check_server
+    permissions:
+      contents: read
+      packages: write

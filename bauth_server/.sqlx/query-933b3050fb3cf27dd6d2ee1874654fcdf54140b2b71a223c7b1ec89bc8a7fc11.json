@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT s.user_id, u.email\n        FROM bauth.sessions s\n        JOIN bauth.users u ON u.id = s.user_id\n        WHERE s.id = $1\n          AND s.revoked_at IS NULL\n          AND s.expires_at > now()\n          AND u.disabled_at IS NULL\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "user_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "bauth.sessions",
+            "name": "user_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "email",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "bauth.users",
+            "name": "email"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "933b3050fb3cf27dd6d2ee1874654fcdf54140b2b71a223c7b1ec89bc8a7fc11"
+}

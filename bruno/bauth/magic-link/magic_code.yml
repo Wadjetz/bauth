@@ -1,0 +1,34 @@
+info:
+  name: magic_code
+  type: http
+  seq: 4
+
+http:
+  method: POST
+  url: "{{host}}/flows/login/:flow_id/magic-code"
+  params:
+    - name: flow_id
+      value: "{{flow_id}}"
+      type: path
+  body:
+    type: json
+    data: |-
+      {
+        "code": "123456"
+      }
+  auth: inherit
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        if (res.body.code) {
+          bru.setEnvVar("magic_link_code", res.body.code)
+        }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

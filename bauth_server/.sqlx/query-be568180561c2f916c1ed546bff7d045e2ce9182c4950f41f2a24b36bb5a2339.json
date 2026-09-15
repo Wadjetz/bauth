@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO bauth.signing_keys (id, algorithm, public_key, encrypted_private_key, active_at)\n        VALUES ($1, 'EdDSA', $2, $3, $4)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Bytea",
+        "Bytea",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "be568180561c2f916c1ed546bff7d045e2ce9182c4950f41f2a24b36bb5a2339"
+}

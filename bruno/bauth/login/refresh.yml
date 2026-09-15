@@ -1,0 +1,25 @@
+info:
+  name: refresh
+  type: http
+  seq: 5
+
+http:
+  method: POST
+  url: "{{host}}/oauth/token"
+  body:
+    type: form-urlencoded
+    data:
+      - name: grant_type
+        value: refresh_token
+      - name: client_id
+        value: my-app
+      - name: refresh_token
+        value: "{{refresh_token}}"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

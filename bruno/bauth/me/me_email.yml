@@ -1,0 +1,22 @@
+info:
+  name: /me/email
+  type: http
+  seq: 5
+
+http:
+  method: POST
+  url: "{{host}}/me/email"
+  body:
+    type: json
+    data: |-
+      {
+        "password": "password12345",
+        "new_email": "test2@test.fr"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

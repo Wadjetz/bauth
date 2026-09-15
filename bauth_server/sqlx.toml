@@ -1,0 +1,6 @@
+[common]
+database-url-var = "BAUTH_DATABASE_URL"
+
+[migrate]
+create-schemas = ["bauth"]
+table-name = "bauth._sqlx_migrations"

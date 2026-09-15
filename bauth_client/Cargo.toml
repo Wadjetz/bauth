@@ -1,0 +1,30 @@
+[package]
+name = "bauth_client"
+authors.workspace = true
+license.workspace = true
+edition.workspace = true
+version.workspace = true
+
+[features]
+# `AuthUser` extractor for axum APIs.
+axum = ["dep:axum", "dep:serde_json"]
+
+[dependencies]
+bauth_core = { path = "../bauth_core" }
+axum = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+jsonwebtoken.workspace = true
+reqwest.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["sync"] }
+tracing.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+aws-lc-rs.workspace = true
+axum.workspace = true
+base64.workspace = true
+getrandom.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tower = { version = "~0.5", features = ["util"] }

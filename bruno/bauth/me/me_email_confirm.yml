@@ -1,0 +1,21 @@
+info:
+  name: /me/email confirm
+  type: http
+  seq: 6
+
+http:
+  method: POST
+  url: "{{host}}/verification/confirm"
+  body:
+    type: json
+    data: |-
+      {
+        "token": "COLLE_LE_TOKEN_DU_LIEN_ICI"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

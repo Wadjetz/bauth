@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE bauth.magic_links SET consumed_at = now() WHERE id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "390be6f17ac2258f9e4b310c7ee0fff0e0f89a67bc6a2f36f702d0ba844774ab"
+}

@@ -1,0 +1,30 @@
+info:
+  name: magic_link_confirm
+  type: http
+  seq: 3
+
+http:
+  method: POST
+  url: "{{host}}/magic-link/confirm"
+  body:
+    type: json
+    data: |-
+      {
+        "token": "<token from the email link>"
+      }
+  auth: inherit
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        if (res.body.code) {
+          bru.setEnvVar("magic_link_code", res.body.code)
+        }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

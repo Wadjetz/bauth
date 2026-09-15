@@ -1,0 +1,14 @@
+name: local
+variables:
+  - name: host
+    value: http://localhost:8401
+  - name: flow_id
+    value: ""
+  - name: login_code
+    value: ""
+  - name: access_token
+    value: ""
+  - name: refresh_token
+    value: ""
+  - name: magic_link_code
+    value: ""

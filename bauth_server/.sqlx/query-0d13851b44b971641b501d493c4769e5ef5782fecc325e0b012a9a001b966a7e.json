@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            DELETE FROM bauth.login_flows WHERE id IN (\n                SELECT id FROM bauth.login_flows\n                WHERE expires_at < now() - interval '1 day'\n                LIMIT $1\n            )\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "0d13851b44b971641b501d493c4769e5ef5782fecc325e0b012a9a001b966a7e"
+}

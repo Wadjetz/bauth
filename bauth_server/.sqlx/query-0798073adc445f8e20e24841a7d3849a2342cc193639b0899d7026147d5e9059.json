@@ -1,0 +1,67 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id, user_id, email, code_hash\n        FROM bauth.magic_links\n        WHERE id = (\n            SELECT id FROM bauth.magic_links\n            WHERE flow_id = $1\n            ORDER BY created_at DESC, id DESC\n            LIMIT 1\n        )\n        AND user_id = $2\n        AND consumed_at IS NULL AND expires_at > now() AND code_failures < $3\n        AND (\n            SELECT coalesce(sum(code_failures), 0) FROM bauth.magic_links\n            WHERE user_id = $2 AND created_at > now() - interval '1 day'\n        ) < $4\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "bauth.magic_links",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "user_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "bauth.magic_links",
+            "name": "user_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "email",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "bauth.magic_links",
+            "name": "email"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "code_hash",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "bauth.magic_links",
+            "name": "code_hash"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Int4",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "0798073adc445f8e20e24841a7d3849a2342cc193639b0899d7026147d5e9059"
+}

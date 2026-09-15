@@ -1,0 +1,34 @@
+info:
+  name: login
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{host}}/flows/login"
+  body:
+    type: json
+    data: |-
+      {
+        "client_id": "my-app",
+        "redirect_uri": "http://localhost:8025/auth/callback",
+        "code_challenge": "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+        "code_challenge_method": "S256",
+        "state": "xyz"
+      }
+  auth: inherit
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        if (res.body.flow_id) {
+          bru.setEnvVar("flow_id", res.body.flow_id)
+        }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

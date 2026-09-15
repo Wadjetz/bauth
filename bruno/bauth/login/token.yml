@@ -1,0 +1,38 @@
+info:
+  name: token
+  type: http
+  seq: 4
+
+http:
+  method: POST
+  url: "{{host}}/oauth/token"
+  body:
+    type: form-urlencoded
+    data:
+      - name: grant_type
+        value: authorization_code
+      - name: client_id
+        value: my-app
+      - name: code
+        value: "{{login_code}}"
+      - name: redirect_uri
+        value: http://localhost:8025/auth/callback
+      - name: code_verifier
+        value: dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk
+  auth: inherit
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        if (res.body.access_token && res.body.refresh_token) {
+          bru.setEnvVar("access_token", res.body.access_token)
+          bru.setEnvVar("refresh_token", res.body.refresh_token)
+        }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

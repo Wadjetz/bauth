@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE bauth.login_flows\n        SET completed_at = now()\n        WHERE id = $1 AND completed_at IS NULL AND expires_at > now()\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "88bca036030604d99c052139b5adc2160dd49dbe4eec1e43ade2ebde9362eded"
+}

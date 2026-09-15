@@ -1,0 +1,24 @@
+info:
+  name: registration
+  type: http
+  seq: 5
+
+http:
+  method: POST
+  url: "{{host}}/registration"
+  body:
+    type: json
+    data: |-
+      {
+        "client_id": "my-app",
+        "email": "test@test.fr",
+        "password": "password12345"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

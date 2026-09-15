@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            DELETE FROM bauth.password_resets WHERE id IN (\n                SELECT id FROM bauth.password_resets\n                WHERE expires_at < now() - interval '7 days' OR consumed_at < now() - interval '7 days'\n                LIMIT $1\n            )\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f54b1597baf2ffeb6723429e554a5aa7780ce9fc6dfc334d6e65bff083340c04"
+}

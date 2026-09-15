@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            DELETE FROM bauth.sessions WHERE id IN (\n                SELECT id FROM bauth.sessions\n                WHERE expires_at < now() - interval '30 days' OR revoked_at < now() - interval '30 days'\n                LIMIT $1\n            )\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "041d0eddb115278280cbab2a5f83ccf25550d898476e7f9f7ffe4e8423f213bb"
+}

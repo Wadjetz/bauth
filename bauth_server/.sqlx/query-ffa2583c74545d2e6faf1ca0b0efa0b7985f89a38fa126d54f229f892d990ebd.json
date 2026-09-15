@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE bauth.password_resets\n        SET consumed_at = now()\n        WHERE user_id = $1 AND consumed_at IS NULL\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "ffa2583c74545d2e6faf1ca0b0efa0b7985f89a38fa126d54f229f892d990ebd"
+}

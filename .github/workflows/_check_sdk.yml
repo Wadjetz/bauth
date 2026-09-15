@@ -1,0 +1,27 @@
+name: _check_sdk()
+
+on:
+  workflow_call:
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sdk/client
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "26"
+          cache: "npm"
+          cache-dependency-path: sdk/client/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Generated types match bauth_server/openapi.json
+        run: npm run generate && git diff --exit-code src/schema.ts
+      - name: Type check
+        run: npm run check
+      - name: Test
+        run: npm test

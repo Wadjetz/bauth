@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT EXISTS (\n            SELECT 1 FROM bauth.refresh_tokens\n            WHERE parent_id = $1 AND rotated_at IS NOT NULL\n        ) AS \"used!\"\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "used!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "7fbe86b1dfa3e8ee262bfc73e3dc22886261843c03ec2dc5a89b185f2c40b49a"
+}

@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE bauth.login_flows\n        SET magic_link_requests = magic_link_requests + 1\n        WHERE id = $1 AND completed_at IS NULL AND expires_at > now()\n        RETURNING client_id, magic_link_requests AS requests, expires_at\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "client_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "bauth.login_flows",
+            "name": "client_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "requests",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "bauth.login_flows",
+            "name": "magic_link_requests"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "expires_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "bauth.login_flows",
+            "name": "expires_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "2917ca3515b34aa6c4608675e02be811e2129f05e5e6212b3d0fef4fd3c7fea9"
+}

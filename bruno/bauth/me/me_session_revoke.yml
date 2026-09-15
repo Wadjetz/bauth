@@ -1,0 +1,19 @@
+info:
+  name: /me/sessions/:session_id (delete)
+  type: http
+  seq: 3
+
+http:
+  method: DELETE
+  url: "{{host}}/me/sessions/:session_id"
+  params:
+    - name: session_id
+      value: "{{session_id}}"
+      type: path
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

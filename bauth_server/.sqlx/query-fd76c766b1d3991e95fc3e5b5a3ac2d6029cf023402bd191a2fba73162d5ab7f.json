@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE bauth.signing_keys\n        SET retired_at = $2\n        WHERE id <> $1 AND (retired_at IS NULL OR retired_at > $2)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "fd76c766b1d3991e95fc3e5b5a3ac2d6029cf023402bd191a2fba73162d5ab7f"
+}
