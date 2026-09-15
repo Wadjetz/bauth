@@ -1,10 +1,29 @@
 {
-  "name": "@bauth/client",
+  "name": "@wadjetz/bauth-client",
   "version": "0.1.0",
   "description": "Framework-agnostic client for the bauth authentication server",
-  "type": "module",
+  "keywords": [
+    "bauth",
+    "authentication",
+    "oauth",
+    "pkce",
+    "magic-link",
+    "sdk"
+  ],
+  "homepage": "https://github.com/Wadjetz/bauth/tree/master/bauth_sdk#readme",
+  "bugs": "https://github.com/Wadjetz/bauth/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Wadjetz/bauth.git",
+    "directory": "bauth_sdk"
+  },
   "license": "MIT",
-  "private": true,
+  "author": "Egor Berezovskiy",
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -13,12 +32,18 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "generate": "openapi-typescript ../bauth_server/openapi.json -o src/schema.ts",
     "build": "tsc",
     "check": "tsc --noEmit",
-    "test": "npm run build && node --test test/"
+    "test": "npm run build && node --test test/",
+    "prepack": "npm run build"
   },
   "dependencies": {
     "openapi-fetch": "^0.17.0"

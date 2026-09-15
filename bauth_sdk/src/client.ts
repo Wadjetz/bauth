@@ -28,7 +28,8 @@ export interface LoginFlow {
   expiresAt: string
   /**
    * PKCE secret proving the code exchange comes from whoever started the flow.
-   * For magic links, store it (e.g. `sessionStorage`) until the link comes back. Never send it anywhere else.
+   * For magic links, store it (e.g. `localStorage`: the link opens a new tab) until the link comes back.
+   * Never send it anywhere else.
    */
   codeVerifier: string
 }

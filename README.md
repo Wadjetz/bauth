@@ -20,7 +20,7 @@ Headless authentication server: apps draw their own screens and call bauth's API
 | `bauth_client` | Verifies bauth access tokens in an API (JWKS cache) |
 | `bauth_core` | Types shared by both |
 
-The TypeScript SDK for apps lives in [`bauth_sdk`](bauth_sdk).
+The TypeScript SDK for apps is [`@wadjetz/bauth-client`](bauth_sdk) on npm.
 
 ## Development
 
