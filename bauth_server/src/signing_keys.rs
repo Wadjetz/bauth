@@ -11,19 +11,29 @@
 use std::sync::Arc;
 
 use arc_swap::ArcSwap;
-use aws_lc_rs::signature::{Ed25519KeyPair, KeyPair};
+use aws_lc_rs::signature::Ed25519KeyPair;
+use aws_lc_rs::signature::KeyPair;
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use chrono::{DateTime, TimeDelta, Utc};
-use jsonwebtoken::jwk::{
-    AlgorithmParameters, CommonParameters, EllipticCurve, Jwk, JwkSet, KeyAlgorithm,
-    OctetKeyPairParameters, OctetKeyPairType, PublicKeyUse,
-};
-use jsonwebtoken::{DecodingKey, EncodingKey};
+use chrono::DateTime;
+use chrono::TimeDelta;
+use chrono::Utc;
+use jsonwebtoken::DecodingKey;
+use jsonwebtoken::EncodingKey;
+use jsonwebtoken::jwk::AlgorithmParameters;
+use jsonwebtoken::jwk::CommonParameters;
+use jsonwebtoken::jwk::EllipticCurve;
+use jsonwebtoken::jwk::Jwk;
+use jsonwebtoken::jwk::JwkSet;
+use jsonwebtoken::jwk::KeyAlgorithm;
+use jsonwebtoken::jwk::OctetKeyPairParameters;
+use jsonwebtoken::jwk::OctetKeyPairType;
+use jsonwebtoken::jwk::PublicKeyUse;
 use uuid::Uuid;
 
 use crate::db::DbPool;
-use crate::master_key::{MasterKey, MasterKeyError};
+use crate::master_key::MasterKey;
+use crate::master_key::MasterKeyError;
 use crate::queries;
 
 /// A new key is created once the signing key is this old.
@@ -287,8 +297,14 @@ impl SigningKeys {
 
 #[cfg(test)]
 mod tests {
-    use jsonwebtoken::{Algorithm, DecodingKey, Header, Validation, decode, encode};
-    use serde::{Deserialize, Serialize};
+    use jsonwebtoken::Algorithm;
+    use jsonwebtoken::DecodingKey;
+    use jsonwebtoken::Header;
+    use jsonwebtoken::Validation;
+    use jsonwebtoken::decode;
+    use jsonwebtoken::encode;
+    use serde::Deserialize;
+    use serde::Serialize;
 
     use super::*;
 

@@ -1,8 +1,11 @@
-use chrono::{DateTime, TimeDelta, Utc};
-use jsonwebtoken::{Algorithm, Header, encode};
-use uuid::Uuid;
-
 pub use bauth_core::AccessTokenClaims;
+use chrono::DateTime;
+use chrono::TimeDelta;
+use chrono::Utc;
+use jsonwebtoken::Algorithm;
+use jsonwebtoken::Header;
+use jsonwebtoken::encode;
+use uuid::Uuid;
 
 use crate::clients::Client;
 use crate::signing_keys::SigningKeys;
@@ -53,7 +56,10 @@ pub fn issue(
 
 #[cfg(test)]
 mod tests {
-    use jsonwebtoken::{DecodingKey, Validation, decode, decode_header};
+    use jsonwebtoken::DecodingKey;
+    use jsonwebtoken::Validation;
+    use jsonwebtoken::decode;
+    use jsonwebtoken::decode_header;
 
     use super::*;
     use crate::clients::Clients;

@@ -1,8 +1,10 @@
-use chrono::{DateTime, Utc};
+use chrono::DateTime;
+use chrono::Utc;
 use sqlx::Executor;
 use uuid::Uuid;
 
-use crate::db::{Db, DbConnection};
+use crate::db::Db;
+use crate::db::DbConnection;
 
 /// `user_id` is `None` for an address without an account. Returns the normalized address.
 pub async fn create<'e, E>(

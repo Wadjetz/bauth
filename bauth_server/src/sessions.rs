@@ -1,4 +1,5 @@
-use chrono::{TimeDelta, Utc};
+use chrono::TimeDelta;
+use chrono::Utc;
 use uuid::Uuid;
 
 use crate::db::DbConnection;

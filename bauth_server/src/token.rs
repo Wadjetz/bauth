@@ -1,6 +1,7 @@
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use sha2::{Digest, Sha256};
+use sha2::Digest;
+use sha2::Sha256;
 
 /// 256 bits of entropy: guessing is impossible, so a fast hash is enough to store it.
 const TOKEN_BYTES: usize = 32;

@@ -1,14 +1,21 @@
-use axum::Json;
-use axum::extract::rejection::{JsonRejection, PathRejection};
-use axum::extract::{FromRequest, FromRequestParts};
 use std::time::Duration;
 
-use axum::http::{HeaderValue, StatusCode, header};
-use axum::response::{IntoResponse, Response};
+use axum::Json;
+use axum::extract::FromRequest;
+use axum::extract::FromRequestParts;
+use axum::extract::rejection::JsonRejection;
+use axum::extract::rejection::PathRejection;
+use axum::http::HeaderValue;
+use axum::http::StatusCode;
+use axum::http::header;
+use axum::response::IntoResponse;
+use axum::response::Response;
 use serde::Serialize;
 use utoipa::ToSchema;
 
-use crate::password::{self, HashingError, PolicyError};
+use crate::password::HashingError;
+use crate::password::PolicyError;
+use crate::password::{self};
 
 /// Errors returned to API clients. `code()` is the stable contract; `message` is for developers.
 #[derive(Debug, thiserror::Error)]
@@ -201,7 +208,8 @@ impl<T: Serialize> IntoResponse for AppJson<T> {
 #[cfg(test)]
 mod tests {
     use axum::Router;
-    use axum::body::{Body, to_bytes};
+    use axum::body::Body;
+    use axum::body::to_bytes;
     use axum::http::Request;
     use axum::routing::post;
     use serde::Deserialize;

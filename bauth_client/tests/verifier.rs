@@ -1,15 +1,22 @@
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 
-use aws_lc_rs::signature::{Ed25519KeyPair, KeyPair};
+use aws_lc_rs::signature::Ed25519KeyPair;
+use aws_lc_rs::signature::KeyPair;
 use axum::Router;
 use axum::extract::State;
 use axum::routing::get;
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use bauth_client::{AccessTokenClaims, Verifier, VerifyError};
+use bauth_client::AccessTokenClaims;
+use bauth_client::Verifier;
+use bauth_client::VerifyError;
+use jsonwebtoken::Algorithm;
+use jsonwebtoken::EncodingKey;
+use jsonwebtoken::Header;
+use jsonwebtoken::encode;
 use jsonwebtoken::jwk::JwkSet;
-use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
 use uuid::Uuid;
 
 const ED25519_PKCS8_PREFIX: [u8; 16] = [
@@ -172,9 +179,13 @@ async fn unreachable_bauth_is_an_error_not_a_panic() {
 
 #[cfg(feature = "axum")]
 mod axum_extractor {
-    use axum::body::{Body, to_bytes};
-    use axum::http::{Request, StatusCode, header};
-    use axum::{Extension, Router};
+    use axum::Extension;
+    use axum::Router;
+    use axum::body::Body;
+    use axum::body::to_bytes;
+    use axum::http::Request;
+    use axum::http::StatusCode;
+    use axum::http::header;
     use bauth_client::AuthUser;
     use tower::ServiceExt;
 

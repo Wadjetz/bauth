@@ -1,6 +1,9 @@
+use lettre::AsyncSmtpTransport;
+use lettre::AsyncTransport;
+use lettre::Message;
+use lettre::Tokio1Executor;
 use lettre::message::Mailbox;
 use lettre::message::header::ContentType;
-use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
 
 #[derive(Debug, thiserror::Error)]
 pub enum MailError {

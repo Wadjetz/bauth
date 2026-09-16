@@ -1,8 +1,11 @@
 use std::collections::BTreeSet;
 use std::time::Duration;
 
-use axum::http::{HeaderValue, Method, header};
-use tower_http::cors::{AllowOrigin, CorsLayer};
+use axum::http::HeaderValue;
+use axum::http::Method;
+use axum::http::header;
+use tower_http::cors::AllowOrigin;
+use tower_http::cors::CorsLayer;
 
 /// Browsers may call bauth only from the registered apps' origins.
 /// No cookies are involved (tokens travel in headers and bodies), so no credentials either.

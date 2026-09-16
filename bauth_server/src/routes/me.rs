@@ -1,7 +1,10 @@
 use axum::extract::State;
 use axum::http::StatusCode;
-use chrono::{DateTime, TimeDelta, Utc};
-use serde::{Deserialize, Serialize};
+use chrono::DateTime;
+use chrono::TimeDelta;
+use chrono::Utc;
+use serde::Deserialize;
+use serde::Serialize;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -9,10 +12,13 @@ use crate::AppState;
 use crate::current_user::CurrentUser;
 use crate::email;
 use crate::emails;
-use crate::errors::{ApiError, AppJson, AppPath};
+use crate::errors::ApiError;
+use crate::errors::AppJson;
+use crate::errors::AppPath;
 use crate::password;
 use crate::queries;
-use crate::rate_limit::{self, ClientIp};
+use crate::rate_limit::ClientIp;
+use crate::rate_limit::{self};
 use crate::token;
 
 const EMAIL_CHANGE_TTL: TimeDelta = TimeDelta::hours(1);

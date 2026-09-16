@@ -31,7 +31,11 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          components: rustfmt, clippy
-      - run: cargo fmt --all -- --check
+          toolchain: nightly
+          components: rustfmt
+      - run: cargo +nightly fmt --all -- --check
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: clippy
       - run: cargo clippy --all-features --all --tests -- -D warnings
       - run: cargo test --all-features --all

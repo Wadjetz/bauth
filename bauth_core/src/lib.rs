@@ -1,6 +1,7 @@
 //! Types shared by the bauth server and the crates that talk to it.
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use uuid::Uuid;
 
 /// Claims of a bauth access token (RFC 9068, JWT profile for OAuth 2.0 access tokens).

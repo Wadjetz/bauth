@@ -2,8 +2,11 @@ use std::sync::LazyLock;
 
 use axum::http::header;
 use axum::response::IntoResponse;
-use utoipa::openapi::security::{HttpAuthScheme, HttpBuilder, SecurityScheme};
-use utoipa::{Modify, OpenApi};
+use utoipa::Modify;
+use utoipa::OpenApi;
+use utoipa::openapi::security::HttpAuthScheme;
+use utoipa::openapi::security::HttpBuilder;
+use utoipa::openapi::security::SecurityScheme;
 
 /// The API contract. `bauth_server/openapi.json` is generated from it and used to build the SDKs.
 #[derive(OpenApi)]

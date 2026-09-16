@@ -3,8 +3,11 @@ use std::fmt;
 use aws_lc_rs::hmac;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
-use chacha20poly1305::aead::{Aead, KeyInit, Payload};
-use chacha20poly1305::{XChaCha20Poly1305, XNonce};
+use chacha20poly1305::XChaCha20Poly1305;
+use chacha20poly1305::XNonce;
+use chacha20poly1305::aead::Aead;
+use chacha20poly1305::aead::KeyInit;
+use chacha20poly1305::aead::Payload;
 
 const KEY_LEN: usize = 32;
 const NONCE_LEN: usize = 24;
