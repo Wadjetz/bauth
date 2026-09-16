@@ -1,5 +1,6 @@
 use axum::http::StatusCode;
 use axum::http::header;
+use serde_json::Value;
 use serde_json::json;
 use sqlx::PgPool;
 
@@ -111,4 +112,97 @@ async fn deleting_the_account_removes_everything(db: PgPool) {
         app.register("alice@example.com").await.status,
         StatusCode::ACCEPTED
     );
+}
+
+#[sqlx::test]
+async fn an_account_without_password_confirms_sensitive_changes_with_a_code(db: PgPool) {
+    let app = TestApp::new(db).await;
+    let tokens = app.login_with_code("carol@example.com").await;
+    let change_email = |body: Value| {
+        app.post("/me/email")
+            .bearer(&tokens.access)
+            .json(body)
+            .send()
+    };
+
+    let nothing = change_email(json!({ "new_email": "carol@new.example.com" })).await;
+    assert_eq!(nothing.code(), "invalid_request");
+    let password =
+        change_email(json!({ "password": PASSWORD, "new_email": "carol@new.example.com" })).await;
+    assert_eq!(password.code(), "password_not_set");
+    let no_code =
+        change_email(json!({ "code": "123456", "new_email": "carol@new.example.com" })).await;
+    assert_eq!(no_code.code(), "invalid_code", "no code was asked for");
+
+    let code = app
+        .confirmation_code(&tokens.access, "change_email", "carol@example.com")
+        .await;
+    // A code is good for one action only.
+    let wrong_action = app
+        .delete("/me")
+        .bearer(&tokens.access)
+        .json(json!({ "code": code }))
+        .send()
+        .await;
+    assert_eq!(wrong_action.code(), "invalid_code");
+
+    let changed = change_email(json!({ "code": code, "new_email": "carol@new.example.com" })).await;
+    assert_eq!(changed.status, StatusCode::ACCEPTED, "{}", changed.body);
+    let confirm = app
+        .confirm_verification(&app.last_token("carol@new.example.com"))
+        .await;
+    assert_eq!(confirm.status, StatusCode::NO_CONTENT);
+    let reused =
+        change_email(json!({ "code": code, "new_email": "carol@other.example.com" })).await;
+    assert_eq!(reused.code(), "invalid_code", "codes are single use");
+
+    let code = app
+        .confirmation_code(&tokens.access, "delete_account", "carol@new.example.com")
+        .await;
+    let deleted = app
+        .delete("/me")
+        .bearer(&tokens.access)
+        .json(json!({ "code": code }))
+        .send()
+        .await;
+    assert_eq!(deleted.status, StatusCode::NO_CONTENT, "{}", deleted.body);
+    let me = app.get("/me").bearer(&tokens.access).send().await;
+    assert_eq!(me.status, StatusCode::UNAUTHORIZED);
+}
+
+#[sqlx::test]
+async fn confirmation_codes_are_bound_to_their_session_and_limited(db: PgPool) {
+    let app = TestApp::new(db).await;
+    let first = app.login_with_code("carol@example.com").await;
+    let second = app.login_with_code("carol@example.com").await;
+
+    let code = app
+        .confirmation_code(&first.access, "delete_account", "carol@example.com")
+        .await;
+    let other_session = app
+        .delete("/me")
+        .bearer(&second.access)
+        .json(json!({ "code": code }))
+        .send()
+        .await;
+    assert_eq!(other_session.code(), "invalid_code");
+
+    // Five wrong codes consume the confirmation, even the right one afterwards.
+    let wrong = format!("{:06}", (code.parse::<u32>().unwrap() + 1) % 1_000_000);
+    for _ in 0..5 {
+        let attempt = app
+            .delete("/me")
+            .bearer(&first.access)
+            .json(json!({ "code": wrong }))
+            .send()
+            .await;
+        assert_eq!(attempt.code(), "invalid_code");
+    }
+    let too_late = app
+        .delete("/me")
+        .bearer(&first.access)
+        .json(json!({ "code": code }))
+        .send()
+        .await;
+    assert_eq!(too_late.code(), "invalid_code");
 }

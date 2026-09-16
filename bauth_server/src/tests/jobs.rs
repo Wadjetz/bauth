@@ -116,6 +116,17 @@ async fn purge_deletes_only_rows_past_their_retention(db: PgPool) {
     let revoked_recently = session(&db, alice, "10 days", Some("2 days")).await;
     let live = session(&db, alice, "10 days", None).await;
 
+    sqlx::query(
+        "INSERT INTO bauth.confirmations (user_id, session_id, action, email, code_hash, expires_at, consumed_at) VALUES
+         ($1, $2, 'delete_account', 'alice@example.com', sha256('a'::bytea), now() - interval '8 days', NULL),
+         ($1, $2, 'change_email', 'alice@example.com', sha256('b'::bytea), now() + interval '1 hour', NULL)",
+    )
+    .bind(alice)
+    .bind(live)
+    .execute(&db)
+    .await
+    .unwrap();
+
     let report = purge::run(&db).await.unwrap().expect("lock is free");
     assert_eq!(
         report,
@@ -124,6 +135,7 @@ async fn purge_deletes_only_rows_past_their_retention(db: PgPool) {
             email_verifications: 2,
             password_resets: 0,
             email_changes: 0,
+            confirmations: 1,
             sessions: 2,
             signing_keys: 0,
             unverified_users: 1,

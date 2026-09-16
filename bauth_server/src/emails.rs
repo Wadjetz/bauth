@@ -91,6 +91,24 @@ pub fn magic_signup(to: &str, app_name: &str, link: &str, code: &str) -> Email {
     }
 }
 
+/// Code confirming a sensitive change asked for from the app (`POST /me/confirmation`).
+/// `action` reads as "…, saisis ce code" — it tells the owner what is being confirmed.
+pub fn confirmation_code(to: &str, action: &str, code: &str) -> Email {
+    Email {
+        to: to.to_owned(),
+        subject: "Ton code de confirmation".to_owned(),
+        text: format!(
+            "Bonjour,\n\n\
+             Pour {action}, saisis ce code dans l'application :\n\n\
+             {code}\n\n\
+             Ce code expire dans 15 minutes et ne sert qu'une fois.\n\
+             Ne communique ce code à personne.\n\
+             Si tu n'as rien demandé, ignore cet email : ton compte n'est pas modifié. \
+             Quelqu'un pourrait avoir accès à ton application : déconnecte tes autres sessions.\n"
+        ),
+    }
+}
+
 /// Sent when a magic link login verifies an account whose password was set before its address
 /// was confirmed: whoever registered may not be the owner.
 pub fn unverified_password_removed(to: &str) -> Email {
