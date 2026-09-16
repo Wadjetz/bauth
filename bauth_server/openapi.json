@@ -99,7 +99,7 @@
         "tags": [
           "Login"
         ],
-        "summary": "Completes the flow with the code of its magic link email, typed on the device that asked for it.\nOnly the newest email's code works, for 5 wrong attempts (10 per account a day). A wrong code,\nan unknown flow and no email sent all answer `invalid_code`.",
+        "summary": "Completes the flow with the code of its magic link email, typed on the device that asked for it,\ncreating the account if the email was a sign-up. Only the newest email's code works, for 5 wrong\nattempts (10 per address a day). A wrong code, an unknown flow and no email sent all answer\n`invalid_code`.",
         "operationId": "confirm_magic_code",
         "parameters": [
           {
@@ -162,7 +162,7 @@
         "tags": [
           "Login"
         ],
-        "summary": "Emails a login link and a 6-digit code for this flow if the account exists. Always answers\nthe same way. A new email disables the code of the previous one.",
+        "summary": "Emails a link and a 6-digit code for this flow: to log in if the account exists, or to create\nit (verified, without password) when the client allows sign-up. Nothing is created before the\nlink or code is used. Always answers the same way. A new email disables the previous code.",
         "operationId": "request_magic_link",
         "parameters": [
           {
@@ -188,7 +188,7 @@
         },
         "responses": {
           "202": {
-            "description": "Same answer whether the account exists or not",
+            "description": "Same answer whether the account exists, is created on first use, or no email is sent",
             "content": {
               "application/json": {
                 "schema": {
@@ -316,7 +316,7 @@
         "tags": [
           "Login"
         ],
-        "summary": "Called by the app page the link opens. Completes the login flow the link was requested from.",
+        "summary": "Called by the app page the link opens. Completes the login flow the link was requested from,\ncreating the account if the email was a sign-up.",
         "operationId": "confirm_magic_link",
         "requestBody": {
           "content": {
