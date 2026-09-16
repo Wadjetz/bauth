@@ -1,6 +1,7 @@
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use sha2::{Digest, Sha256};
+use sha2::Digest;
+use sha2::Sha256;
 
 /// base64url(SHA-256) without padding is always 43 characters.
 const S256_CHALLENGE_LEN: usize = 43;

@@ -2,7 +2,10 @@ use axum::extract::FromRequestParts;
 use axum::http::header;
 use axum::http::request::Parts;
 use bauth_core::AccessTokenClaims;
-use jsonwebtoken::{Algorithm, Validation, decode, decode_header};
+use jsonwebtoken::Algorithm;
+use jsonwebtoken::Validation;
+use jsonwebtoken::decode;
+use jsonwebtoken::decode_header;
 use uuid::Uuid;
 
 use crate::AppState;

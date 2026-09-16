@@ -1,7 +1,12 @@
 use std::sync::LazyLock;
 
+use argon2::Algorithm;
+use argon2::Argon2;
+use argon2::Params;
+use argon2::PasswordHasher;
+use argon2::PasswordVerifier;
+use argon2::Version;
 use argon2::password_hash::Error as HashError;
-use argon2::{Algorithm, Argon2, Params, PasswordHasher, PasswordVerifier, Version};
 use tokio::sync::Semaphore;
 
 /// Minimum length in characters (not bytes).

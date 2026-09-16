@@ -1,7 +1,8 @@
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::jobs::purge::{self, PurgeReport};
+use crate::jobs::purge::PurgeReport;
+use crate::jobs::purge::{self};
 
 async fn user(db: &PgPool, email: &str) -> Uuid {
     sqlx::query_scalar("INSERT INTO bauth.users (email) VALUES ($1) RETURNING id")

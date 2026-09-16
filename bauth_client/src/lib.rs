@@ -20,4 +20,6 @@ mod verifier;
 pub use bauth_core::AccessTokenClaims;
 #[cfg(feature = "axum")]
 pub use extract::AuthRejection;
-pub use verifier::{AuthUser, Verifier, VerifyError};
+pub use verifier::AuthUser;
+pub use verifier::Verifier;
+pub use verifier::VerifyError;

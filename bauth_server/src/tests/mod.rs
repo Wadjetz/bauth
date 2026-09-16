@@ -10,25 +10,38 @@ mod me;
 mod oauth;
 mod protections;
 
-use std::net::{IpAddr, SocketAddr};
-use std::sync::{Arc, Mutex};
+use std::net::IpAddr;
+use std::net::SocketAddr;
+use std::sync::Arc;
+use std::sync::Mutex;
 
 use axum::Router;
-use axum::body::{Body, to_bytes};
+use axum::body::Body;
+use axum::body::to_bytes;
 use axum::extract::ConnectInfo;
-use axum::http::{HeaderMap, HeaderName, Method, Request, StatusCode, header, request};
-use serde_json::{Value, json};
+use axum::http::HeaderMap;
+use axum::http::HeaderName;
+use axum::http::Method;
+use axum::http::Request;
+use axum::http::StatusCode;
+use axum::http::header;
+use axum::http::request;
+use serde_json::Value;
+use serde_json::json;
 use tower::ServiceExt;
 
+use crate::AppState;
+use crate::app;
 use crate::clients::Clients;
 use crate::config::ServerConfig;
 use crate::db::DbPool;
 use crate::magic_code::MagicCodeKey;
-use crate::mailer::{Email, Mailer};
+use crate::mailer::Email;
+use crate::mailer::Mailer;
 use crate::master_key::MasterKey;
 use crate::rate_limit::RateLimits;
-use crate::signing_keys::{self, SharedSigningKeys};
-use crate::{AppState, app};
+use crate::signing_keys::SharedSigningKeys;
+use crate::signing_keys::{self};
 
 pub const ISSUER: &str = "http://localhost:8401";
 pub const CLIENT_ID: &str = "my-app";

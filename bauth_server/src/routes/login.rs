@@ -1,17 +1,24 @@
 use axum::extract::State;
 use axum::http::StatusCode;
-use chrono::{DateTime, TimeDelta, Utc};
-use serde::{Deserialize, Serialize};
+use chrono::DateTime;
+use chrono::TimeDelta;
+use chrono::Utc;
+use serde::Deserialize;
+use serde::Serialize;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::errors::{ApiError, AppJson, AppPath};
-use crate::login_flow::{self, LoginResponse};
+use crate::errors::ApiError;
+use crate::errors::AppJson;
+use crate::errors::AppPath;
+use crate::login_flow::LoginResponse;
+use crate::login_flow::{self};
 use crate::password;
 use crate::pkce;
 use crate::queries;
-use crate::rate_limit::{self, ClientIp};
+use crate::rate_limit::ClientIp;
+use crate::rate_limit::{self};
 
 const FLOW_TTL: TimeDelta = TimeDelta::minutes(15);
 const MAX_STATE_LEN: usize = 512;

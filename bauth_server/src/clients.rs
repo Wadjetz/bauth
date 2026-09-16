@@ -1,5 +1,7 @@
-use std::collections::{BTreeSet, HashMap};
-use std::path::{Path, PathBuf};
+use std::collections::BTreeSet;
+use std::collections::HashMap;
+use std::path::Path;
+use std::path::PathBuf;
 
 use serde::Deserialize;
 use url::Url;

@@ -1,15 +1,20 @@
 //! In-memory rate limits for endpoints that burn CPU (argon2) or send emails.
 //! Budgets live in this process: with several instances, each enforces its own.
 
-use std::net::{IpAddr, Ipv6Addr, SocketAddr};
+use std::net::IpAddr;
+use std::net::Ipv6Addr;
+use std::net::SocketAddr;
 use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::time::Duration;
 
-use axum::extract::{ConnectInfo, FromRequestParts};
+use axum::extract::ConnectInfo;
+use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
-use governor::clock::{Clock, DefaultClock};
-use governor::{DefaultKeyedRateLimiter, Quota};
+use governor::DefaultKeyedRateLimiter;
+use governor::Quota;
+use governor::clock::Clock;
+use governor::clock::DefaultClock;
 
 use crate::AppState;
 use crate::errors::ApiError;

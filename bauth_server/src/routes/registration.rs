@@ -1,17 +1,19 @@
 use axum::extract::State;
 use axum::http::StatusCode;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use utoipa::ToSchema;
 
+use super::verification;
 use crate::AppState;
 use crate::email;
 use crate::emails;
-use crate::errors::{ApiError, AppJson};
+use crate::errors::ApiError;
+use crate::errors::AppJson;
 use crate::password;
 use crate::queries;
-use crate::rate_limit::{self, ClientIp};
-
-use super::verification;
+use crate::rate_limit::ClientIp;
+use crate::rate_limit::{self};
 
 #[derive(Deserialize, ToSchema)]
 pub struct RegistrationRequest {

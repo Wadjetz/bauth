@@ -20,12 +20,18 @@
 //! ```
 
 use axum::Json;
-use axum::extract::{FromRequestParts, OptionalFromRequestParts};
+use axum::extract::FromRequestParts;
+use axum::extract::OptionalFromRequestParts;
+use axum::http::HeaderValue;
+use axum::http::StatusCode;
+use axum::http::header;
 use axum::http::request::Parts;
-use axum::http::{HeaderValue, StatusCode, header};
-use axum::response::{IntoResponse, Response};
+use axum::response::IntoResponse;
+use axum::response::Response;
 
-use crate::{AuthUser, Verifier, VerifyError};
+use crate::AuthUser;
+use crate::Verifier;
+use crate::VerifyError;
 
 /// Why `AuthUser` couldn't be extracted. Answers like bauth: `{ "code", "message" }`.
 #[derive(Debug, thiserror::Error)]
