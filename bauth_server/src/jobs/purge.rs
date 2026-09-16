@@ -3,7 +3,7 @@
 //! | Rows                                         | Deleted once …                         |
 //! |----------------------------------------------|----------------------------------------|
 //! | login flows (+ their codes and magic links)  | expired for 1 day                      |
-//! | email verifications, password resets, email changes | expired or used for 7 days      |
+//! | email verifications, password resets, email changes, confirmations | expired or used for 7 days |
 //! | sessions (+ their refresh tokens)            | expired or revoked for 30 days         |
 //! | signing keys                                 | retired for 30 days (long gone from the JWKS) |
 //! | users never verified (+ everything of theirs) | created 7 days ago                    |
@@ -27,6 +27,7 @@ pub struct PurgeReport {
     pub email_verifications: u64,
     pub password_resets: u64,
     pub email_changes: u64,
+    pub confirmations: u64,
     pub sessions: u64,
     pub signing_keys: u64,
     pub unverified_users: u64,
@@ -39,6 +40,7 @@ impl PurgeReport {
             email_verifications = self.email_verifications,
             password_resets = self.password_resets,
             email_changes = self.email_changes,
+            confirmations = self.confirmations,
             sessions = self.sessions,
             signing_keys = self.signing_keys,
             unverified_users = self.unverified_users,
@@ -126,6 +128,21 @@ async fn purge(db: &DbPool) -> Result<PurgeReport, sqlx::Error> {
     })
     .await?;
 
+    let confirmations = in_batches(move || {
+        sqlx::query!(
+            r#"
+            DELETE FROM bauth.confirmations WHERE id IN (
+                SELECT id FROM bauth.confirmations
+                WHERE expires_at < now() - interval '7 days' OR consumed_at < now() - interval '7 days'
+                LIMIT $1
+            )
+            "#,
+            BATCH_SIZE
+        )
+        .execute(db)
+    })
+    .await?;
+
     let sessions = in_batches(move || {
         sqlx::query!(
             r#"
@@ -169,6 +186,7 @@ async fn purge(db: &DbPool) -> Result<PurgeReport, sqlx::Error> {
         email_verifications,
         password_resets,
         email_changes,
+        confirmations,
         sessions,
         signing_keys,
         unverified_users,

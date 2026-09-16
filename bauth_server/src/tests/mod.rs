@@ -368,6 +368,36 @@ impl TestApp {
         }
     }
 
+    /// Signs up (or logs in) with the magic code, like an account that has no password.
+    pub async fn login_with_code(&self, email: &str) -> Tokens {
+        let flow_id = self.start_flow().await;
+        self.request_magic_link(&flow_id, email).await;
+        let login = self
+            .submit_magic_code(&flow_id, &self.last_magic_code(email))
+            .await;
+        assert_eq!(login.status, StatusCode::OK, "{}", login.body);
+        let tokens = self
+            .exchange(&login.str("code"), CODE_VERIFIER, REDIRECT_URI)
+            .await;
+        assert_eq!(tokens.status, StatusCode::OK, "{}", tokens.body);
+        Tokens {
+            access: tokens.str("access_token"),
+            refresh: tokens.str("refresh_token"),
+        }
+    }
+
+    /// Emails a confirmation code for a sensitive change, and returns it.
+    pub async fn confirmation_code(&self, access_token: &str, action: &str, email: &str) -> String {
+        let sent = self
+            .post("/me/confirmation")
+            .bearer(access_token)
+            .json(json!({ "action": action }))
+            .send()
+            .await;
+        assert_eq!(sent.status, StatusCode::ACCEPTED, "{}", sent.body);
+        self.last_magic_code(email)
+    }
+
     pub async fn refresh(&self, refresh_token: &str) -> TestResponse {
         self.post("/oauth/token")
             .form(&[

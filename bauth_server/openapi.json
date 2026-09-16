@@ -417,7 +417,73 @@
             "description": "Account deleted"
           },
           "400": {
-            "description": "`invalid_request`, `password_not_set`, `invalid_credentials`",
+            "description": "`invalid_request`, `password_not_set`, `invalid_credentials`, `invalid_code`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthorized`: refresh the access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`rate_limited`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/me/confirmation": {
+      "post": {
+        "tags": [
+          "Me"
+        ],
+        "summary": "Emails a 6-digit code confirming `action`, to send back as `code` on that route. It is the way\naccounts without a password (magic link only) confirm sensitive changes. The code only works\nfor this action, from this session, for 5 wrong attempts; a new one disables the previous.",
+        "operationId": "request_confirmation",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Code emailed to the account's address",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfirmationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`invalid_request`",
             "content": {
               "application/json": {
                 "schema": {
@@ -459,7 +525,7 @@
         "tags": [
           "Me"
         ],
-        "summary": "Sends a confirmation link to the new address. The account keeps its current address\nuntil the link is used, on `POST /verification/confirm`.",
+        "summary": "Sends a confirmation link to the new address. The account keeps its current address\nuntil the link is used, on `POST /verification/confirm`. Confirmed by the current password,\nor by a code from `POST /me/confirmation` when the account has none.",
         "operationId": "change_email",
         "requestBody": {
           "content": {
@@ -483,7 +549,7 @@
             }
           },
           "400": {
-            "description": "`invalid_request`, `invalid_email`, `password_not_set`, `invalid_credentials`",
+            "description": "`invalid_request`, `invalid_email`, `password_not_set`, `invalid_credentials`, `invalid_code`",
             "content": {
               "application/json": {
                 "schema": {
@@ -1067,15 +1133,25 @@
       "ChangeEmailRequest": {
         "type": "object",
         "required": [
-          "password",
           "new_email"
         ],
         "properties": {
+          "code": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "6-digit code from `POST /me/confirmation` with `action: \"change_email\"`."
+          },
           "new_email": {
             "type": "string"
           },
           "password": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Current password, or `code` for an account that has none."
           }
         }
       },
@@ -1122,6 +1198,42 @@
           }
         }
       },
+      "ConfirmationAction": {
+        "type": "string",
+        "description": "What a code confirms. An account with no password proves itself by email instead.",
+        "enum": [
+          "change_email",
+          "delete_account"
+        ]
+      },
+      "ConfirmationRequest": {
+        "type": "object",
+        "required": [
+          "action"
+        ],
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/ConfirmationAction"
+          }
+        }
+      },
+      "ConfirmationResponse": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/ConfirmationStatus"
+          }
+        }
+      },
+      "ConfirmationStatus": {
+        "type": "string",
+        "enum": [
+          "confirmation_sent"
+        ]
+      },
       "CreateFlowRequest": {
         "type": "object",
         "required": [
@@ -1154,12 +1266,20 @@
       },
       "DeleteAccountRequest": {
         "type": "object",
-        "required": [
-          "password"
-        ],
         "properties": {
+          "code": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "6-digit code from `POST /me/confirmation` with `action: \"delete_account\"`."
+          },
           "password": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Current password, or `code` for an account that has none."
           }
         }
       },

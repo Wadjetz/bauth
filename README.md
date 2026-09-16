@@ -9,7 +9,8 @@ Headless authentication server: apps draw their own screens and call bauth's API
 
 - Registration with email verification, password login, magic links (+ 6-digit code, passwordless sign-up), password reset
 - OAuth 2.1 authorization code flow with PKCE; EdDSA access tokens (JWT) published in a JWKS
-- Refresh token rotation with reuse detection, revocation, `/me` (profile, password, email, sessions, account deletion)
+- Refresh token rotation with reuse detection, revocation, `/me` (profile, password, email, sessions, account deletion,
+  confirmed by password or by an emailed code for passwordless accounts)
 - Rate limits per IP and per email address
 
 ## Crates

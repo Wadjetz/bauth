@@ -35,6 +35,7 @@ pub fn router() -> Router<AppState> {
         )
         .route("/magic-link/confirm", post(magic_link::confirm))
         .route("/me", get(me::get).delete(me::delete_account))
+        .route("/me/confirmation", post(me::request_confirmation))
         .route("/me/email", post(me::change_email))
         .route("/me/password", post(me::change_password))
         .route("/me/sessions", get(me::list_sessions))

@@ -1,0 +1,10 @@
+{% extends "base.txt" %}
+{% block content %}Pour {{ action }}, saisissez ce code dans l'application :
+
+{{ code }}
+
+Ce code expire dans 15 minutes et ne sert qu'une fois.
+Ne communiquez ce code à personne.
+
+Si vous n'avez rien demandé, ignorez cet email : votre compte n'est pas modifié. Quelqu'un pourrait avoir accès à votre application : déconnectez vos autres sessions.
+{% endblock content %}
