@@ -84,6 +84,15 @@ test("account routes send the bearer token; 204 resolves", async () => {
   assert.deepEqual([requests[1].method, requests[1].url], ["DELETE", "https://auth.test/me/sessions/s1"])
 })
 
+test("sensitive changes send the password or the code", async () => {
+  const { fetch, requests } = fakeFetch(json(202, { status: "confirmation_sent" }), new Response(null, { status: 204 }))
+  const client = createBauthClient({ ...options, fetch })
+  await client.requestConfirmation("at", "delete_account")
+  await client.deleteAccount("at", { code: "042917" })
+  assert.deepEqual(JSON.parse(requests[0].body), { action: "delete_account" })
+  assert.deepEqual([requests[1].method, JSON.parse(requests[1].body)], ["DELETE", { code: "042917" }])
+})
+
 test("tokenFromUrl reads the fragment", () => {
   assert.equal(tokenFromUrl("https://app.test/auth/magic-link#token=abc_-1"), "abc_-1")
   assert.equal(tokenFromUrl("https://app.test/auth/magic-link?token=abc"), null)
