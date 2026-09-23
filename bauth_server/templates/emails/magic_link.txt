@@ -1,0 +1,13 @@
+{% extends "base.txt" %}
+{% block content %}{% if signup %}Pour créer votre compte {{ app_name }}, saisissez ce code sur l'appareil où vous l'avez demandé :{% else %}Pour vous connecter à {{ app_name }}, saisissez ce code sur l'appareil où vous avez demandé la connexion :{% endif %}
+
+{{ code }}
+
+Ou ouvrez ce lien sur cet appareil :
+
+{{ link }}
+
+Le code et le lien expirent dans 15 minutes et ne servent qu'une fois.
+Ne communiquez ce code à personne.
+{% if signup %}Si vous n'avez rien demandé, ignorez cet email : aucun compte ne sera créé.{% else %}Si vous n'avez pas demandé à vous connecter, ignorez cet email.{% endif %}
+{% endblock content %}

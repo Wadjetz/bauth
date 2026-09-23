@@ -1,0 +1,8 @@
+{% extends "base.txt" %}
+{% block content %}Pour activer votre compte, confirmez votre adresse email :
+
+{{ link }}
+
+Ce lien expire dans 24 heures.
+Si vous n'avez pas créé de compte, ignorez cet email.
+{% endblock content %}

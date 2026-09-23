@@ -1,0 +1,8 @@
+{% component code(value) -%}
+<p style="margin:24px 0;font-size:28px;letter-spacing:6px;font-family:ui-monospace,Menlo,Consolas,monospace"><strong>{{ value }}</strong></p>
+{%- endcomponent %}
+
+{% component button(url, label) -%}
+<p style="margin:24px 0"><a href="{{ url }}" style="display:inline-block;padding:12px 20px;background:#1a1a1a;color:#ffffff;border-radius:6px;font-weight:bold;text-decoration:none">{{ label }}</a></p>
+<p style="font-size:13px;color:#666666;word-break:break-all">Si le bouton ne fonctionne pas, copiez ce lien dans votre navigateur :<br><a href="{{ url }}" style="color:#666666">{{ url }}</a></p>
+{%- endcomponent %}

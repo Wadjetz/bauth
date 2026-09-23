@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block content %}
+<p>Pour activer votre compte, confirmez votre adresse email :</p>
+{{ <button url={link} label="Confirmer mon adresse" /> }}
+<p>Ce lien expire dans 24 heures.<br>Si vous n'avez pas créé de compte, ignorez cet email.</p>
+{% endblock content %}
