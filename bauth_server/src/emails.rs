@@ -32,6 +32,8 @@ static TEMPLATES: LazyLock<Tera> = LazyLock::new(|| {
         "password_changed.txt",
         "magic_link.html",
         "magic_link.txt",
+        "confirmation_code.html",
+        "confirmation_code.txt",
         "unverified_password_removed.html",
         "unverified_password_removed.txt",
         "confirm_email_change.html",
@@ -138,6 +140,20 @@ fn magic(to: &str, subject: String, app_name: &str, link: &str, code: &str, sign
     render(to, subject, "magic_link", context)
 }
 
+/// Code confirming a sensitive change asked for from the app (`POST /me/confirmation`).
+/// `action` reads after "Pour …" — it tells the owner what is being confirmed.
+pub fn confirmation_code(to: &str, action: &str, code: &str) -> Email {
+    let mut context = Context::new();
+    context.insert("action", action);
+    context.insert("code", code);
+    render(
+        to,
+        "Votre code de confirmation".to_owned(),
+        "confirmation_code",
+        context,
+    )
+}
+
 /// Sent when a magic link login verifies an account whose password was set before its address
 /// was confirmed: whoever registered may not be the owner.
 pub fn unverified_password_removed(to: &str) -> Email {
@@ -196,6 +212,7 @@ mod tests {
             password_changed("a@b.fr"),
             magic_link("a@b.fr", "App", LINK, "042917"),
             magic_signup("a@b.fr", "App", LINK, "042917"),
+            confirmation_code("a@b.fr", "supprimer votre compte", "042917"),
             unverified_password_removed("a@b.fr"),
             confirm_email_change("a@b.fr", LINK),
             email_changed("a@b.fr", "c@d.fr"),

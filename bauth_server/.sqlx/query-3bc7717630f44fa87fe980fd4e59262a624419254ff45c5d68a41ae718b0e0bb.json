@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE bauth.confirmations\n        SET code_failures = code_failures + 1,\n            consumed_at = CASE WHEN code_failures + 1 >= $2 THEN now() END\n        WHERE id = $1\n        RETURNING code_failures\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "code_failures",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "bauth.confirmations",
+            "name": "code_failures"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "3bc7717630f44fa87fe980fd4e59262a624419254ff45c5d68a41ae718b0e0bb"
+}

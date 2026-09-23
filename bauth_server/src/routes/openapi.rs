@@ -35,6 +35,7 @@ use utoipa::openapi::security::SecurityScheme;
         super::me::delete_account,
         super::me::change_password,
         super::me::change_email,
+        super::me::request_confirmation,
         super::me::list_sessions,
         super::me::revoke_session,
         super::well_known::jwks,

@@ -1,4 +1,5 @@
 pub mod authorization_codes;
+pub mod confirmations;
 pub mod email_changes;
 pub mod email_verifications;
 pub mod login_flows;

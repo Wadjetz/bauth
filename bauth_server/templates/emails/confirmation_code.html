@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block content %}
+<p>Pour {{ action }}, saisissez ce code dans l'application :</p>
+{{ <code value={code} /> }}
+<p>Ce code expire dans 15 minutes et ne sert qu'une fois.<br>Ne communiquez ce code à personne.</p>
+<p>Si vous n'avez rien demandé, ignorez cet email : votre compte n'est pas modifié. Quelqu'un pourrait avoir accès à votre application : déconnectez vos autres sessions.</p>
+{% endblock content %}

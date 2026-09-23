@@ -55,9 +55,9 @@ several queries take `&mut DbConnection`). The rest of the tree is what `ls` sho
 - Can share a Postgres with other apps: **everything lives in schema `bauth`**. Always write `bauth.table`
   in SQL — the search path could otherwise hit another app's `public.users`.
 - Migration table `bauth._sqlx_migrations` (see `sqlx.toml`). Reversible migrations (`sqlx migrate add -r`).
-- Tables: `users`, `password_credentials`, `email_verifications`, `login_flows`, `authorization_codes`,
-  `signing_keys`, `sessions`, `refresh_tokens` (`parent_id`, `superseded_at`), `password_resets`,
-  `magic_links` (`user_id` NULL = sign-up, `code_hash`, `code_failures`), `email_changes`.
+- Tables: one per file in `queries/` (and in `migrations/`). Columns that aren't self-explanatory:
+  `refresh_tokens.parent_id` / `superseded_at` (rotation lineage), `magic_links.user_id` NULL =
+  sign-up, plus its `code_hash` / `code_failures`.
 - UUID v7 ids (`uuidv7()` default, Postgres 18), `timestamptz` ↔ `DateTime<Utc>`.
 - Emails normalized **in SQL** with `lower(btrim($1))` on insert and lookup.
 
@@ -100,7 +100,10 @@ several queries take `&mut DbConnection`). The rest of the tree is what `ls` sho
 - Rate limits are checked before argon2 / DB writes. `X-Forwarded-For` only trusted from
   `BAUTH_TRUSTED_PROXIES`.
 - `CurrentUser` checks the session in the DB: revocation is immediate for `/me`.
-  Password, email change and account deletion require the current password.
+  Password, email change and account deletion require the current password — or, for an account
+  without one, a 6-digit code emailed by `POST /me/confirmation` (`confirmations`, bound to the
+  session **and** the action, 15 min, 5 wrong codes then consumed, 10 per account a day, account row
+  locked). `/me/password` still goes through password reset: a code must not set a password.
 - `ServerConfig` has no `Debug` (it holds secrets). `MasterKey` has a redacting `Debug`.
 - CORS allows only client origins: origins of each client's http(s) URLs, `BAUTH_VERIFICATION_URL`,
   plus `allowed_origins` (Tauri: `tauri://localhost`, `http://tauri.localhost`). No credentials.
@@ -112,9 +115,8 @@ several queries take `&mut DbConnection`). The rest of the tree is what `ls` sho
 - `/oauth/*`: `OAuthError` in RFC 6749 format (`{"error": "invalid_grant", …}`), form-encoded input.
 
 ## Configuration
-- Env (`.env.example`): `BAUTH_BIND_ADDR`, `BAUTH_ISSUER` (no trailing slash), `BAUTH_DATABASE_URL`,
-  `BAUTH_MASTER_KEY` (base64 32 bytes; losing it invalidates keys), `BAUTH_CONFIG`, `BAUTH_SMTP_URL`,
-  `BAUTH_MAIL_FROM`, `BAUTH_VERIFICATION_URL`, `BAUTH_TRUSTED_PROXIES`, `RUST_LOG`.
+- Env: the list is `.env.example`. Non-obvious: `BAUTH_ISSUER` takes no trailing slash, and
+  `BAUTH_MASTER_KEY` is base64 32 bytes — losing it invalidates every signing key.
 - `bauth.toml` clients (`deny_unknown_fields`): `id`, `name`, `redirect_uris`, `allow_signup`,
   `audience`, `password_reset_url`, `magic_link_url`, `allowed_origins`.
 
@@ -125,7 +127,7 @@ several queries take `&mut DbConnection`). The rest of the tree is what `ls` sho
   `TestApp` has helpers (`register_verified`, `login`, `refresh`, `last_token`, `age_rotations`…).
   Files: `oauth` (PKCE, code replay, refresh rotation), `accounts` (verification, no enumeration,
   reset, magic link and code, passwordless sign-up, stale links), `me` (session revocation, password change, deletion),
-  `protections` (rate limits, per-flow email cap, X-Forwarded-For, CORS), `jobs` (purge retention and lock),
+  `protections` (rate limits, per-flow email cap, X-Forwarded-For, CORS), `me` also covers confirmation codes, `jobs` (purge retention and lock),
   `key_rotation` (prepublication, handover, unpublication, emergency retirement).
 - `DATABASE_URL` points to the dedicated `postgres-test` compose service (port 5440, in-memory): sqlx
   creates `_sqlx_test_*` databases and a `_sqlx_test` schema there. Never the dev Postgres.
@@ -143,9 +145,15 @@ several queries take `&mut DbConnection`). The rest of the tree is what `ls` sho
 - Meant to run behind a reverse proxy (TLS, `X-Forwarded-For` from `BAUTH_TRUSTED_PROXIES`).
 
 ## Audit findings (2026-09-15, full read of `bauth_server`, `bauth_client`, migrations)
-Nothing below is fixed yet. Remove an item once it is (or once the decision is recorded elsewhere).
+Numbers are stable references: once an item is fixed (or decided), replace its text with a one-line
+`Fixed <date>: …` note instead of deleting it, so the numbering never shifts.
+Only items 1–4 (the pre-production blockers) are kept here; items 5–23 and the second audit
+(2026-09-16, items 24–43: magic code, sign-up, confirmations, SDK) are in the `bauth-roadmap` skill.
 
 ### Fix before production
+1. *Fixed 2026-09-15: pre-registration takeover through magic link — a magic link/code login on an
+   unverified account drops its password and sessions; unverified accounts are purged after 7 days
+   (see Flows). Residual: item 28.*
 2. **Pending email changes survive a password reset/change.** `recovery::reset` and
    `me::change_password` call `password_resets::consume_all_for_user` but not the same for
    `email_changes`: someone who knew the old password and requested `POST /me/email` keeps a 1 h link
@@ -159,69 +167,10 @@ Nothing below is fixed yet. Remove an item once it is (or once the decision is r
    `password_resets::consume`): argon2 for anyone, bounded only by `token_per_ip`. Do a cheap
    pending-token check first, like `submit_password` does with `login_flows::is_pending`.
 
-### Should fix / decide
-5. **Refresh grace window is a permanent fork.** Reuse of a rotated token within 30 s creates a
-   second child of the same parent (`oauth.rs::refresh_token`, `(None, Some(_))` within
-   `REFRESH_REUSE_GRACE`); both lineages then rotate normally and theft is never detected (RFC 9700
-   §4.14.2 expects any reuse to be treated as a breach). Alternative: allow the second child but
-   revoke the session when a *second* child of one parent gets rotated — two tabs sharing storage
-   only ever use one of them (this changes `two_tabs_refreshing_at_once_both_keep_working`).
-6. **`state` is accepted but never returned.** `CreateFlowRequest.state` says "echoed back with the
-   code", but `LoginResponse::Completed` only carries `code`. Return `state` (and `redirect_uri`,
-   which the magic-link page needs to know where to go) or drop the field and the column.
-7. **`CurrentUser` accepts any `aud`** (`current_user.rs`, `validate_aud = false`): a resource
-   server holding a user's `aud: other-api` token can read `/me`, list and **revoke sessions** without the
-   password. Options: add the issuer as a second audience (`aud` becomes an array in `bauth_core`),
-   or accept and document the trust in resource servers. Session revocation should count as sensitive.
-8. **Per-email login limit locks the owner out.** `login_per_email` (10 then 1/30 s) is charged
-   for every attempt, so wrong passwords sprayed at a victim's address make their correct login 429.
-   Count failures only (separate counter) or key by `(ip, email)` with a looser per-email budget.
-9. **Trusted proxies by exact IP** (`rate_limit::parse_trusted_proxies`): the reverse proxy's address on a
-   Docker network changes across restarts; when it isn't trusted (or doesn't forward `X-Forwarded-For`),
-   every user shares one bucket and login is globally rate limited. Accept CIDRs (`ipnet`) and
-   document the reverse proxy setup.
-10. **RFC 8414 metadata claims a grant that doesn't exist per spec.** `well_known.rs` advertises
-    `response_types_supported: ["code"]` and `authorization_code` without `authorization_endpoint`
-    (REQUIRED when a supported grant uses it). bauth's code flow is its own JSON API (`/flows/login`),
-    not RFC 6749 §4.1: generic OAuth libraries can't drive it. Say so in the metadata's doc, or drop
-    the endpoint. Also `validate_issuer` allows a path, but RFC 8414 §3.1 puts `/.well-known/…`
-    between host and path, so an issuer with a path wouldn't be discoverable at `routes::router()`.
-11. **RFC 8252 §7.3 loopback redirects**: `http://127.0.0.1:{any port}/…` must match on any port;
-    `Client::allows_redirect_uri` compares byte for byte. Only matters for a native app using a
-    loopback listener (Tauri desktop); none does today.
-12. **Signing key creation has no lock.** `signing_keys::ensure_and_load` inserts a key when none
-    can sign: several instances starting at once each create one. And if every key was retired by SQL
-    between the :07 reload and the 03:23 rotation, `rotate_if_due` publishes a key for +24 h, then
-    `reload` creates an immediate one that is never retired (`retire_all_except` already ran) and
-    stays in the JWKS forever. Create keys under `ROTATION_LOCK_KEY`, and make `rotate_if_due`
-    create an immediate key when nothing signs.
-13. **`email::is_valid` accepts addresses lettre can't send to** (`a<b@c.fr`, quotes): the request
-    is 202, the background send fails, the user never gets the link. Validate with
-    `lettre::Address::from_str` (`Mailbox` parse) inside `is_valid`.
-14. **Emergency key retirement latency.** Deleting a compromised key row leaves it verifiable up to
-    1 h in `bauth_client` caches (`JWKS_MAX_AGE`) and until the next :07 reload for bauth's own `/me`
-    (`CurrentUser` uses the in-memory JWKS). Runbook: delete the row, restart bauth, restart APIs or
-    wait 1 h. The planned admin API should do the reload itself.
-
-### Hygiene
-15. `current_user.rs` `strip_prefix("Bearer ")` is case-sensitive; `bauth_client::extract` is
-    case-insensitive (RFC 9110 §11.1). Align on the client's behaviour.
-16. `/oauth/token` responses lack `Pragma: no-cache` (RFC 6749 §5.1 MUST; OAuth 2.1 dropped it).
-17. Unknown routes and 405s return an empty body, not `{code, message}`: add a `fallback` returning
-    `not_found`.
-18. No `Cache-Control: no-store` on `/me*` responses and no `X-Content-Type-Options: nosniff`
-    anywhere (`SetResponseHeaderLayer`).
-19. No graceful shutdown (`axum::serve(..).with_graceful_shutdown`) and no request timeout layer:
-    SIGTERM cuts in-flight requests; slow clients are left to the reverse proxy.
-20. `POST /me/password` accepts `new_password == current_password`; `POST /me/email` confirmation
-    keeps every session open (design choice: the old address only gets a notification).
-21. Accounts without a password (magic link only) can't `DELETE /me` nor change email
-    (`password_not_set` sends them through password reset). Intended, but apps must explain it.
-22. `config.rs` defaults `BAUTH_BIND_ADDR` to `0.0.0.0:3000`; `.env.example` and the Dockerfile use
-    8401.
-23. Web apps keeping refresh tokens in JS storage give an XSS a 30-day session: weigh a shorter web
-    session TTL (per-client TTL is on the list) or a BFF/cookie pattern for web apps. Not a
-    bauth change, but it drives the session TTL decision.
+### Should fix / decide, and hygiene
+Items 5–23 (refresh grace fork, `state` never returned, `aud` on `/me`, per-email limit, trusted
+proxy CIDRs, RFC 8414/8252 details, signing-key lock, `email::is_valid`, key-retirement latency,
+and the hygiene list) are in the `bauth-roadmap` skill, with items 24–43.
 
 Reviewed and fine: PKCE S256 only with shape checks; codes bound to client, redirect URI and
 challenge, 60 s TTL, replay revokes the session; `invalid_grant` on mismatch rolls back so the code
@@ -238,20 +187,8 @@ propose OIDC provider features, TOTP/passkeys, admin UI, etc. unless the maintai
 ## Not done yet
 - Audit items 2–4 above (before production).
 - Import of users from an existing app (keep UUIDs, bcrypt → argon2id rehash on first login).
-- **Sign in with Google** (bauth is an OIDC *client* of Google, it does not need to be an OIDC provider):
-  - `identities (user_id, provider, subject, email, created_at)`, unique `(provider, subject)`:
-    Google's `sub` is the identity, never the email (addresses can change or be recycled).
-  - Flow: `POST /flows/login/{id}/google` → Google authorization URL (bauth's own PKCE + `state` +
-    `nonce` stored on the flow) → Google redirects to **one** bauth callback
-    (`GET /oauth/google/callback`) → bauth exchanges the code, verifies the `id_token` (`iss`, `aud`,
-    `exp`, `nonce`, Google JWKS), completes the flow and redirects to the flow's `redirect_uri` with
-    `code` (+ `state`). The app then uses `/oauth/token` as today.
-  - Linking: known `(google, sub)` → that user. Otherwise an account with the same email is linked
-    only if `email_verified` is true; like the magic link (`magic_link::log_in`), linking an **unverified**
-    account must drop its password and sessions. No account → create it if the client `allow_signup`.
-  - Config: `BAUTH_GOOGLE_CLIENT_ID` / `BAUTH_GOOGLE_CLIENT_SECRET`; `google` listed in `methods`
-    only when configured (per client opt-in: `google = true` in `bauth.toml`).
-  - `GET /me` exposes linked providers; unlinking is refused if it would leave no way to log in.
+- **Sign in with Google** (bauth is an OIDC *client* of Google, it does not need to be an OIDC
+  provider). Design — identities table, flow, linking rules, config — in the `bauth-roadmap` skill.
 
 ### Parked ideas
 Kept for later, not planned. See the `bauth-roadmap` skill (`.claude/skills/bauth-roadmap/`);

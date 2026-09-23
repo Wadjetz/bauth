@@ -187,6 +187,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/confirmation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Emails a 6-digit code confirming `action`, to send back as `code` on that route. It is the way
+         *     accounts without a password (magic link only) confirm sensitive changes. The code only works
+         *     for this action, from this session, for 5 wrong attempts; a new one disables the previous.
+         */
+        post: operations["request_confirmation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me/email": {
         parameters: {
             query?: never;
@@ -198,7 +219,8 @@ export interface paths {
         put?: never;
         /**
          * Sends a confirmation link to the new address. The account keeps its current address
-         *     until the link is used, on `POST /verification/confirm`.
+         *     until the link is used, on `POST /verification/confirm`. Confirmed by the current password,
+         *     or by a code from `POST /me/confirmation` when the account has none.
          */
         post: operations["change_email"];
         delete?: never;
@@ -400,8 +422,11 @@ export interface components {
             token_endpoint_auth_methods_supported: string[];
         };
         ChangeEmailRequest: {
+            /** @description 6-digit code from `POST /me/confirmation` with `action: "change_email"`. */
+            code?: string | null;
             new_email: string;
-            password: string;
+            /** @description Current password, or `code` for an account that has none. */
+            password?: string | null;
         };
         ChangeEmailResponse: {
             status: components["schemas"]["ChangeEmailStatus"];
@@ -415,6 +440,19 @@ export interface components {
         ConfirmRequest: {
             token: string;
         };
+        /**
+         * @description What a code confirms. An account with no password proves itself by email instead.
+         * @enum {string}
+         */
+        ConfirmationAction: "change_email" | "delete_account";
+        ConfirmationRequest: {
+            action: components["schemas"]["ConfirmationAction"];
+        };
+        ConfirmationResponse: {
+            status: components["schemas"]["ConfirmationStatus"];
+        };
+        /** @enum {string} */
+        ConfirmationStatus: "confirmation_sent";
         CreateFlowRequest: {
             client_id: string;
             code_challenge: string;
@@ -424,7 +462,10 @@ export interface components {
             state?: string | null;
         };
         DeleteAccountRequest: {
-            password: string;
+            /** @description 6-digit code from `POST /me/confirmation` with `action: "delete_account"`. */
+            code?: string | null;
+            /** @description Current password, or `code` for an account that has none. */
+            password?: string | null;
         };
         /** @description Error of every app route. Apps translate `code`, which is stable; `message` is for developers. */
         ErrorBody: {
@@ -900,7 +941,58 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description `invalid_request`, `password_not_set`, `invalid_credentials` */
+            /** @description `invalid_request`, `password_not_set`, `invalid_credentials`, `invalid_code` */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description `unauthorized`: refresh the access token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description `rate_limited` */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    request_confirmation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfirmationRequest"];
+            };
+        };
+        responses: {
+            /** @description Code emailed to the account's address */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfirmationResponse"];
+                };
+            };
+            /** @description `invalid_request` */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -951,7 +1043,7 @@ export interface operations {
                     "application/json": components["schemas"]["ChangeEmailResponse"];
                 };
             };
-            /** @description `invalid_request`, `invalid_email`, `password_not_set`, `invalid_credentials` */
+            /** @description `invalid_request`, `invalid_email`, `password_not_set`, `invalid_credentials`, `invalid_code` */
             400: {
                 headers: {
                     [name: string]: unknown;
