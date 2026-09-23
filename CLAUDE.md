@@ -19,7 +19,7 @@ The SDK needs **TypeScript 5** — `openapi-typescript` requires it.
 
 ## Commands
 ```sh
-podman compose up -d mailpit postgres-test   # SMTP :1025, UI :8026; test Postgres on :5440
+podman compose up -d                         # dev Postgres :5441, SMTP :1025, UI :8026, test Postgres :5440
 cd bauth_server && sqlx migrate run          # sqlx-cli reads bauth_server/sqlx.toml
 cargo run -p bauth_server                    # reads .env (see .env.example)
 SQLX_OFFLINE=true cargo clippy --all-features --all --tests -- -D warnings   # what CI runs
@@ -44,6 +44,9 @@ several queries take `&mut DbConnection`). The rest of the tree is what `ls` sho
   03:23 (new key when the signing one is 30 days old). Batched deletes under `pg_try_advisory_lock` /
   advisory xact lock, so several instances can run at once.
 - `purge` must **never** delete refresh tokens of a live session: theft detection needs them.
+- Emails are Tera 2 templates in `bauth_server/templates/emails/`, one `.txt` + `.html` pair each
+  (French, *vouvoiement*), compiled into the binary: a new template must also be listed in the
+  `templates!` call of `emails.rs`. `.html` autoescapes; components (`code`, `button`) in `components.html`.
 - Signing keys: Ed25519 seeds encrypted by `master_key` (XChaCha20-Poly1305, per-key AAD); a new key is
   published 24 h before it signs and kept 24 h after; the signing key is picked per token from
   `active_at` / `retired_at`.

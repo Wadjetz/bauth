@@ -1,0 +1,5 @@
+{% extends "base.txt" %}
+{% block content %}L'adresse email de votre compte est maintenant {{ new_email }}.
+
+Si ce n'est pas vous, votre compte est peut-être compromis : contactez-nous en répondant à cet email.
+{% endblock content %}

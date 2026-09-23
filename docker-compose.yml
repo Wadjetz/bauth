@@ -6,6 +6,19 @@ services:
       - 1025:1025 # SMTP
       - 8026:8025 # Web UI → http://localhost:8026 (8025 is left to the app under development)
 
+  # Development database (`cargo run`, `sqlx migrate run`). Data kept in the `postgres-dev` volume:
+  # `podman compose down -v` wipes it. Port 5441 to stay clear of other Postgres instances.
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: bauth
+      POSTGRES_PASSWORD: bauth
+      POSTGRES_DB: bauth
+    ports:
+      - 5441:5432
+    volumes:
+      - postgres-dev:/var/lib/postgresql
+
   # Tests only (`#[sqlx::test]` creates a throwaway database per test). Data lives in memory.
   # Port 5440 to stay clear of other Postgres instances (5432…).
   postgres-test:
@@ -17,3 +30,6 @@ services:
       - 5440:5432
     tmpfs:
       - /var/lib/postgresql
+
+volumes:
+  postgres-dev:

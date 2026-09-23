@@ -1,0 +1,6 @@
+{% extends "base.txt" %}
+{% block content %}Quelqu'un a essayé de créer un compte avec votre adresse email, mais vous en avez déjà un.
+
+Si c'était vous, connectez-vous, ou réinitialisez votre mot de passe si vous l'avez oublié.
+Sinon, vous pouvez ignorer cet email : votre compte n'a pas été modifié.
+{% endblock content %}

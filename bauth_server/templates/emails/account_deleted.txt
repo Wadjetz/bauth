@@ -1,0 +1,4 @@
+{% extends "base.txt" %}
+{% block content %}Votre compte et toutes vos sessions ont été supprimés.
+Si ce n'est pas vous, contactez-nous en répondant à cet email.
+{% endblock content %}

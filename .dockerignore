@@ -15,4 +15,4 @@ Dockerfile
 .dockerignore
 
 # Node packages: not needed to build the server
-sdk
+bauth_sdk

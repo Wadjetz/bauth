@@ -74,6 +74,7 @@ thiserror = "~2.0"
 tracing = "~0.1"
 tracing-subscriber = { version = "~0.3", features = ["env-filter"] }
 # Email
+tera = { version = "~2.4", default-features = false }
 lettre = { version = "~0.11", default-features = false, features = [
   "aws-lc-rs",
   "builder",

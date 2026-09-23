@@ -1,0 +1,8 @@
+{% extends "base.txt" %}
+{% block content %}Pour utiliser cette adresse avec votre compte, confirmez-la :
+
+{{ link }}
+
+Ce lien expire dans 1 heure.
+Si vous n'avez rien demandé, ignorez cet email : aucun compte ne sera modifié.
+{% endblock content %}

@@ -3,7 +3,7 @@ use lettre::AsyncTransport;
 use lettre::Message;
 use lettre::Tokio1Executor;
 use lettre::message::Mailbox;
-use lettre::message::header::ContentType;
+use lettre::message::MultiPart;
 
 #[derive(Debug, thiserror::Error)]
 pub enum MailError {
@@ -20,6 +20,8 @@ pub struct Email {
     pub to: String,
     pub subject: String,
     pub text: String,
+    /// Same content as `text`, sent alongside it (`multipart/alternative`).
+    pub html: String,
 }
 
 #[derive(Clone)]
@@ -65,8 +67,7 @@ impl Mailer {
             .from(self.from.clone())
             .to(email.to.parse()?)
             .subject(email.subject)
-            .header(ContentType::TEXT_PLAIN)
-            .body(email.text)?)
+            .multipart(MultiPart::alternative_plain_html(email.text, email.html))?)
     }
 
     pub async fn send(&self, email: Email) -> Result<(), MailError> {
@@ -113,19 +114,25 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn builds_utf8_plain_text_messages() {
+    async fn builds_utf8_text_and_html_messages() {
         let mailer = Mailer::new("smtp://localhost:1025", "bauth <no-reply@example.com>").unwrap();
         let email = Email {
             to: "alice@example.com".into(),
-            subject: "Confirme ton adresse email à My App".into(),
+            subject: "Confirmez votre adresse email à My App".into(),
             text: "Ce lien expire dans 24 heures.".into(),
+            html: "<p>Ce lien expire dans 24 heures.</p>".into(),
         };
         let raw = String::from_utf8(mailer.message(email.clone()).unwrap().formatted()).unwrap();
 
         assert!(raw.contains("From: bauth <no-reply@example.com>"), "{raw}");
         assert!(raw.contains("To: alice@example.com"), "{raw}");
+        assert!(raw.contains("multipart/alternative"), "{raw}");
         assert!(
             raw.contains("Content-Type: text/plain; charset=utf-8"),
+            "{raw}"
+        );
+        assert!(
+            raw.contains("Content-Type: text/html; charset=utf-8"),
             "{raw}"
         );
         // Headers must be ASCII: the accented subject word is MIME-encoded.
