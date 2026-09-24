@@ -30,7 +30,6 @@ COPY --from=builder /build/target/release/bauth_server /usr/local/bin/bauth
 
 USER bauth
 # Mount the clients configuration at /etc/bauth/bauth.toml; secrets come from the environment.
-ENV BAUTH_BIND_ADDR=0.0.0.0:8401 \
-    BAUTH_CONFIG=/etc/bauth/bauth.toml
+ENV BAUTH_CONFIG=/etc/bauth/bauth.toml
 EXPOSE 8401
 CMD ["bauth"]

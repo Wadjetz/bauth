@@ -210,7 +210,9 @@ export function createBauthClient(options: BauthClientOptions) {
 		},
 
 		async resendVerification(email: string): Promise<void> {
-			await unwrap(api.POST("/verification", { body: { email } }));
+			await unwrap(
+				api.POST("/verification", { body: { client_id: clientId, email } }),
+			);
 		},
 
 		/** On the verification page: confirms email verification or an email change. */

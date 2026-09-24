@@ -60,6 +60,7 @@ redirect_uris = ["http://localhost:8025/auth/callback"]
 allow_signup = true
 password_reset_url = "http://localhost:8025/auth/reset-password"
 magic_link_url = "http://localhost:8025/auth/magic-link"
+verification_url = "http://localhost:8025/auth/verify-email"
 
 [[clients]]
 id = "closed"
@@ -176,7 +177,6 @@ impl TestApp {
             database_url: String::new(),
             smtp_url: String::new(),
             mail_from: String::new(),
-            verification_url: format!("{APP_ORIGIN}/auth/verify-email"),
             config_path: Default::default(),
             master_key: String::new(),
             issuer: ISSUER.to_owned(),

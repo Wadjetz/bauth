@@ -57,6 +57,7 @@ pub async fn register(
     if !client.allow_signup {
         return Err(ApiError::SignupDisabled);
     }
+    let page = verification::page(client)?;
     if !email::is_valid(&input.email) {
         return Err(ApiError::InvalidEmail);
     }
@@ -75,13 +76,7 @@ pub async fn register(
         Some(user) => {
             queries::password_credentials::upsert(&mut *tx, user.id, &password_hash).await?;
             tracing::info!(user_id = %user.id, "user registered");
-            verification::verification_email(
-                &mut *tx,
-                &state.config.verification_url,
-                user.id,
-                &user.email,
-            )
-            .await?
+            verification::verification_email(&mut *tx, page, user.id, &user.email).await?
         }
         // Email taken: answer exactly as if it succeeded, but warn the real owner.
         None => match queries::users::find_by_email(&mut *tx, &input.email).await? {

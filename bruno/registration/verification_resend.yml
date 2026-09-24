@@ -10,6 +10,7 @@ http:
     type: json
     data: |-
       {
+        "client_id": "my-app",
         "email": "test@test.fr"
       }
   auth: inherit

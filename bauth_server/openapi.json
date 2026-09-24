@@ -370,7 +370,6 @@
         "operationId": "get_me",
         "responses": {
           "200": {
-            "description": "",
             "content": {
               "application/json": {
                 "schema": {
@@ -653,7 +652,6 @@
         "operationId": "list_sessions",
         "responses": {
           "200": {
-            "description": "",
             "content": {
               "application/json": {
                 "schema": {
@@ -796,7 +794,6 @@
         },
         "responses": {
           "200": {
-            "description": "",
             "content": {
               "application/json": {
                 "schema": {
@@ -1002,7 +999,7 @@
             }
           },
           "400": {
-            "description": "`invalid_request`, `invalid_email`",
+            "description": "`invalid_request`, `invalid_client`, `invalid_email`",
             "content": {
               "application/json": {
                 "schema": {
@@ -1529,9 +1526,13 @@
       "ResendRequest": {
         "type": "object",
         "required": [
+          "client_id",
           "email"
         ],
         "properties": {
+          "client_id": {
+            "type": "string"
+          },
           "email": {
             "type": "string"
           }

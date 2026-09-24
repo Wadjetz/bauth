@@ -4,7 +4,7 @@ use envconfig::Envconfig;
 
 #[derive(Clone, Envconfig)]
 pub struct ServerConfig {
-    #[envconfig(from = "BAUTH_BIND_ADDR", default = "0.0.0.0:3000")]
+    #[envconfig(from = "BAUTH_BIND_ADDR", default = "0.0.0.0:8401")]
     pub bind_addr: SocketAddr,
     #[envconfig(from = "BAUTH_DATABASE_URL")]
     pub database_url: String,
@@ -12,11 +12,6 @@ pub struct ServerConfig {
     pub smtp_url: String,
     #[envconfig(from = "BAUTH_MAIL_FROM", default = "bauth <no-reply@example.com>")]
     pub mail_from: String,
-    #[envconfig(
-        from = "BAUTH_VERIFICATION_URL",
-        default = "http://localhost:8401/verify-email"
-    )]
-    pub verification_url: String,
     #[envconfig(from = "BAUTH_CONFIG", default = "bauth.toml")]
     pub config_path: std::path::PathBuf,
     #[envconfig(from = "BAUTH_MASTER_KEY")]

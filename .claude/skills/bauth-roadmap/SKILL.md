@@ -244,8 +244,6 @@ deleting it, so the numbering never shifts.
     keeps every session open (design choice: the old address only gets a notification).
 21. *Fixed 2026-09-16: accounts without a password confirm email change and deletion with a code
     from `POST /me/confirmation` (see Security invariants). Follow-up: item 27.*
-22. `config.rs` defaults `BAUTH_BIND_ADDR` to `0.0.0.0:3000`; `.env.example` and the Dockerfile use
-    8401.
 23. Web apps keeping refresh tokens in JS storage give an XSS a 30-day session: weigh a shorter web
     session TTL (per-client TTL is on the list) or a BFF/cookie pattern for web apps. Not a
     bauth change, but it drives the session TTL decision.
