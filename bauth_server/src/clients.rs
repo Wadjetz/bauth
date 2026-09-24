@@ -43,6 +43,10 @@ pub struct Client {
     pub password_reset_url: Option<String>,
     /// App page that receives `#token=…` to finish a magic link login. Enables magic links.
     pub magic_link_url: Option<String>,
+    /// App page that receives `#token=…` to confirm an email address and sends it to
+    /// `POST /verification/confirm`: registration with a password, verification resend, and the
+    /// new address of an email change. Required by those three routes.
+    pub verification_url: Option<String>,
     /// Browser origins allowed to call bauth (CORS), on top of the origins of the http(s) URLs above.
     /// For apps whose origin appears in no URL, like Tauri: `tauri://localhost`, `http://tauri.localhost`.
     #[serde(default)]
@@ -88,6 +92,7 @@ impl Client {
             .map(String::as_str)
             .chain(self.password_reset_url.as_deref())
             .chain(self.magic_link_url.as_deref())
+            .chain(self.verification_url.as_deref())
             .filter_map(|url| Url::parse(url).ok())
             .filter(|url| matches!(url.scheme(), "http" | "https"))
             .filter_map(|url| origin_of(&url))
@@ -135,6 +140,9 @@ impl Client {
         }
         if let Some(url) = &self.magic_link_url {
             check_url("magic_link_url", url).map_err(invalid)?;
+        }
+        if let Some(url) = &self.verification_url {
+            check_url("verification_url", url).map_err(invalid)?;
         }
         for origin in &self.allowed_origins {
             // Compared byte for byte with the browser's `Origin` header.
@@ -257,6 +265,7 @@ mod tests {
             redirect_uris = ["http://localhost:8025/auth/callback", "https://app.example.com/auth/callback"]
             magic_link_url = "https://app.example.com/auth/magic-link"
             password_reset_url = "https://www.example.com:8443/reset"
+            verification_url = "https://verify.example.com/email"
 
             [[clients]]
             id = "my-app-mobile"
@@ -275,6 +284,7 @@ mod tests {
                 "http://localhost:8025",
                 "http://tauri.localhost",
                 "https://app.example.com",
+                "https://verify.example.com",
                 "https://www.example.com:8443",
                 "tauri://localhost",
             ]

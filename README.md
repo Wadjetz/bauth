@@ -27,7 +27,7 @@ The TypeScript SDK for apps is [`@wadjetz/bauth-client`](bauth_sdk) on npm.
 
 ```sh
 cp .env.example .env            # then set BAUTH_MASTER_KEY: openssl rand -base64 32
-podman compose up -d mailpit postgres-test   # emails on http://localhost:8026, test Postgres on :5440
+podman compose up -d           # dev Postgres :5441, emails on http://localhost:8026, test Postgres :5440
 cd bauth_server && sqlx migrate run && cd ..
 cargo run -p bauth_server
 ```
@@ -39,6 +39,30 @@ After changing a SQL query, refresh the offline query cache used by CI and Docke
 ```sh
 cd bauth_server && cargo sqlx prepare
 ```
+
+After changing a route, a request or response type, or a `#[utoipa::path]` doc, regenerate
+`bauth_server/openapi.json` (otherwise its test fails), then the SDK types generated from it:
+
+```sh
+UPDATE_OPENAPI=1 SQLX_OFFLINE=true cargo test -p bauth_server openapi
+cd bauth_sdk && npm run generate && npm test
+```
+
+## Releasing the SDK
+
+`@wadjetz/bauth-client` is published by hand. Release it together with any server change to the API
+(its types come from `openapi.json`), with a version telling how compatible it is: `patch` for fixes,
+`minor` for additions — and, while in `0.x`, for breaking changes too.
+
+```sh
+npm login                               # sessions expire: check with `npm whoami`
+cd bauth_sdk
+npm run generate && npm test            # types match openapi.json, tests pass
+npm version minor --no-git-tag-version  # bumps package.json and package-lock.json
+npm publish                             # `prepack` rebuilds dist/
+```
+
+Then commit the version bump.
 
 ## Docker
 

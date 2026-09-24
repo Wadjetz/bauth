@@ -23,6 +23,8 @@ pub struct CurrentUser {
     pub id: Uuid,
     pub email: String,
     pub session_id: Uuid,
+    /// Client the session belongs to (the token's `client_id`).
+    pub client_id: String,
 }
 
 impl FromRequestParts<AppState> for CurrentUser {
@@ -67,6 +69,7 @@ impl FromRequestParts<AppState> for CurrentUser {
             id: session.user_id,
             email: session.email,
             session_id: claims.sid,
+            client_id: claims.client_id,
         })
     }
 }

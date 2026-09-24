@@ -9,6 +9,7 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::AppState;
+use crate::clients::Client;
 use crate::db::Db;
 use crate::email;
 use crate::emails;
@@ -21,6 +22,13 @@ use crate::rate_limit::{self};
 use crate::token;
 
 const VERIFICATION_TTL: TimeDelta = TimeDelta::hours(24);
+
+/// The client's page for email confirmation links (`verification_url` in bauth.toml).
+pub fn page(client: &Client) -> Result<&str, ApiError> {
+    client.verification_url.as_deref().ok_or_else(|| {
+        ApiError::InvalidRequest("email verification is not enabled for this client".into())
+    })
+}
 
 /// Stores a new verification token for `email` and returns the email to send.
 /// Send it only after the surrounding transaction commits.
@@ -42,6 +50,7 @@ where
 
 #[derive(Deserialize, ToSchema)]
 pub struct ResendRequest {
+    client_id: String,
     email: String,
 }
 
@@ -64,7 +73,7 @@ pub struct ResendResponse {
     request_body = ResendRequest,
     responses(
         (status = 202, description = "Same answer whether a link was sent or not", body = ResendResponse),
-        (status = 400, description = "`invalid_request`, `invalid_email`", body = crate::errors::ErrorBody),
+        (status = 400, description = "`invalid_request`, `invalid_client`, `invalid_email`", body = crate::errors::ErrorBody),
         (status = 429, description = "`rate_limited`", body = crate::errors::ErrorBody),
     )
 )]
@@ -76,6 +85,11 @@ pub async fn resend(
     AppJson(input): AppJson<ResendRequest>,
 ) -> Result<(StatusCode, AppJson<ResendResponse>), ApiError> {
     state.rate_limits.email_per_ip.check(&client_ip.key())?;
+    let client = state
+        .clients
+        .get(&input.client_id)
+        .ok_or(ApiError::InvalidClient)?;
+    let page = page(client)?;
     if !email::is_valid(&input.email) {
         return Err(ApiError::InvalidEmail);
     }
@@ -89,13 +103,7 @@ pub async fn resend(
         && user.email_verified_at.is_none()
     {
         // Earlier links stay valid until they expire: whichever the user clicks works.
-        let email = verification_email(
-            &state.db,
-            &state.config.verification_url,
-            user.id,
-            &user.email,
-        )
-        .await?;
+        let email = verification_email(&state.db, page, user.id, &user.email).await?;
         state.mailer.send_in_background(email);
         tracing::info!(user_id = %user.id, "verification email resent");
     }

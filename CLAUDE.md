@@ -105,7 +105,7 @@ several queries take `&mut DbConnection`). The rest of the tree is what `ls` sho
   session **and** the action, 15 min, 5 wrong codes then consumed, 10 per account a day, account row
   locked). `/me/password` still goes through password reset: a code must not set a password.
 - `ServerConfig` has no `Debug` (it holds secrets). `MasterKey` has a redacting `Debug`.
-- CORS allows only client origins: origins of each client's http(s) URLs, `BAUTH_VERIFICATION_URL`,
+- CORS allows only client origins: origins of each client's http(s) URLs,
   plus `allowed_origins` (Tauri: `tauri://localhost`, `http://tauri.localhost`). No credentials.
 
 ## Errors
@@ -118,7 +118,8 @@ several queries take `&mut DbConnection`). The rest of the tree is what `ls` sho
 - Env: the list is `.env.example`. Non-obvious: `BAUTH_ISSUER` takes no trailing slash, and
   `BAUTH_MASTER_KEY` is base64 32 bytes — losing it invalidates every signing key.
 - `bauth.toml` clients (`deny_unknown_fields`): `id`, `name`, `redirect_uris`, `allow_signup`,
-  `audience`, `password_reset_url`, `magic_link_url`, `allowed_origins`.
+  `audience`, `password_reset_url`, `magic_link_url`, `verification_url` (email confirmation page:
+  password registration, verification resend and email change fail without it), `allowed_origins`.
 
 ## Tests
 - Unit tests next to the code (crypto, validation, config, rate limits…).
@@ -139,9 +140,9 @@ several queries take `&mut DbConnection`). The rest of the tree is what `ls` sho
 ## Deployment
 - `Dockerfile`: cargo-chef, `rust:1.98-slim-trixie` → `debian:trixie-slim`, non-root, port 8401,
   `BAUTH_CONFIG=/etc/bauth/bauth.toml` (mount it). Migrations run at startup.
-- `release.yml` (on GitHub release): check then push `ghcr.io/wadjetz/bauth:{latest,sha}`; a release tagged
-  `sdk-v<version>` (= `bauth_sdk/package.json` version) instead publishes `@wadjetz/bauth-client` to npm through
-  trusted publishing (OIDC, no token, provenance) — the publish job must stay in `release.yml`.
+- `release.yml` (on GitHub release): check then push `ghcr.io/wadjetz/bauth:{latest,sha}`.
+- `@wadjetz/bauth-client` is published by hand (`npm publish`, see README "Releasing the SDK"): bump it
+  with any server API change — `0.1.1` predates `client_id` on `POST /verification`.
 - Meant to run behind a reverse proxy (TLS, `X-Forwarded-For` from `BAUTH_TRUSTED_PROXIES`).
 
 ## Audit findings (2026-09-15, full read of `bauth_server`, `bauth_client`, migrations)

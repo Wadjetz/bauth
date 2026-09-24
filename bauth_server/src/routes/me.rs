@@ -8,6 +8,7 @@ use serde::Serialize;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+use super::verification;
 use crate::AppState;
 use crate::current_user::CurrentUser;
 use crate::email;
@@ -419,6 +420,13 @@ pub async fn change_email(
             "new_email is the current address".into(),
         ));
     }
+    // The confirmation link opens the page of the app the change was asked from.
+    let page = state
+        .clients
+        .get(&user.client_id)
+        .ok_or(ApiError::InvalidClient)
+        .and_then(verification::page)?
+        .to_owned();
     confirm_sensitive(
         &state,
         &client_ip,
@@ -447,7 +455,7 @@ pub async fn change_email(
             expires_at,
         )
         .await?;
-        let link = format!("{}#token={}", state.config.verification_url, token.plain);
+        let link = format!("{page}#token={}", token.plain);
         state
             .mailer
             .send_in_background(emails::confirm_email_change(&new_email_key, &link));

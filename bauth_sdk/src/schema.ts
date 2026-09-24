@@ -541,6 +541,7 @@ export interface components {
         /** @enum {string} */
         RegistrationStatus: "verification_sent";
         ResendRequest: {
+            client_id: string;
             email: string;
         };
         ResendResponse: {
@@ -1415,7 +1416,7 @@ export interface operations {
                     "application/json": components["schemas"]["ResendResponse"];
                 };
             };
-            /** @description `invalid_request`, `invalid_email` */
+            /** @description `invalid_request`, `invalid_client`, `invalid_email` */
             400: {
                 headers: {
                     [name: string]: unknown;

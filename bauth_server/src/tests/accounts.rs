@@ -23,7 +23,7 @@ async fn password_login_requires_a_verified_email(db: PgPool) {
     // Lost the first email: ask for another one.
     let resend = app
         .post("/verification")
-        .json(json!({ "email": "alice@example.com" }))
+        .json(json!({ "client_id": CLIENT_ID, "email": "alice@example.com" }))
         .send()
         .await;
     assert_eq!(resend.status, StatusCode::ACCEPTED);
@@ -505,4 +505,27 @@ async fn links_sent_to_a_previous_address_stop_working(db: PgPool) {
         notice.text.contains("alice@new.example.com"),
         "old address is told where the account moved"
     );
+}
+
+#[sqlx::test]
+async fn email_links_open_the_page_of_the_client_that_asked(db: PgPool) {
+    let app = TestApp::new(db).await;
+    app.register("alice@example.com").await;
+    let email = app.emails_to("alice@example.com").pop().unwrap();
+    assert!(
+        email
+            .text
+            .contains("http://localhost:8025/auth/verify-email#token="),
+        "{}",
+        email.text
+    );
+
+    // A client without `verification_url` can't send confirmation links.
+    let resend = app
+        .post("/verification")
+        .json(json!({ "client_id": "closed", "email": "alice@example.com" }))
+        .send()
+        .await;
+    assert_eq!(resend.code(), "invalid_request");
+    assert_eq!(app.emails_to("alice@example.com").len(), 1);
 }

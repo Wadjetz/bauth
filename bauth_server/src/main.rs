@@ -127,14 +127,7 @@ async fn main() {
 
 /// The whole HTTP API. Shared by `main` and the integration tests.
 fn app(state: AppState) -> Router {
-    let mut origins = state.clients.origins();
-    // The verification page also calls bauth from the browser.
-    if let Ok(url) = url::Url::parse(&state.config.verification_url)
-        && matches!(url.scheme(), "http" | "https")
-        && let Some(origin) = clients::origin_of(&url)
-    {
-        origins.insert(origin);
-    }
+    let origins = state.clients.origins();
     tracing::info!(?origins, "CORS allowed origins");
 
     Router::new()
