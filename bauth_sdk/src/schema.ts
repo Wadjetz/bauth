@@ -499,6 +499,12 @@ export interface components {
             email: string;
         };
         MagicLinkResponse: {
+            /**
+             * Format: date-time
+             * @description When the flow expires now: each email keeps it alive as long as itself. Same value whether
+             *     the account exists or not (it only depends on the flow).
+             */
+            expires_at: string;
             status: components["schemas"]["MagicLinkStatus"];
         };
         /** @enum {string} */

@@ -529,3 +529,63 @@ async fn email_links_open_the_page_of_the_client_that_asked(db: PgPool) {
     assert_eq!(resend.code(), "invalid_request");
     assert_eq!(app.emails_to("alice@example.com").len(), 1);
 }
+
+#[sqlx::test]
+async fn a_magic_link_email_keeps_its_flow_alive_as_long_as_itself(db: PgPool) {
+    let app = TestApp::new(db).await;
+    let flow_id = app.start_flow().await;
+    let flow_uuid: uuid::Uuid = flow_id.parse().unwrap();
+    // Asked for at the end of the flow's life: the email still says 15 minutes.
+    sqlx::query(
+        "UPDATE bauth.login_flows SET expires_at = now() + interval '1 minute' WHERE id = $1",
+    )
+    .bind(flow_uuid)
+    .execute(&app.db)
+    .await
+    .unwrap();
+    let sent = app.request_magic_link(&flow_id, "carol@example.com").await;
+
+    let (flow_expires, link_expires, long_enough): (
+        chrono::DateTime<chrono::Utc>,
+        chrono::DateTime<chrono::Utc>,
+        bool,
+    ) = sqlx::query_as(
+        "SELECT f.expires_at, l.expires_at, f.expires_at > now() + interval '14 minutes'
+             FROM bauth.login_flows f JOIN bauth.magic_links l ON l.flow_id = f.id WHERE f.id = $1",
+    )
+    .bind(flow_uuid)
+    .fetch_one(&app.db)
+    .await
+    .unwrap();
+    assert_eq!(
+        flow_expires, link_expires,
+        "the flow lives exactly as long as the email"
+    );
+    // The app learns the new expiry, to keep continuing this flow rather than start another.
+    let announced: chrono::DateTime<chrono::Utc> = sent.str("expires_at").parse().unwrap();
+    assert_eq!(announced, flow_expires);
+    assert!(long_enough);
+
+    // Never shortened: a flow that outlives the email keeps its expiry.
+    sqlx::query(
+        "UPDATE bauth.login_flows SET expires_at = now() + interval '1 hour' WHERE id = $1",
+    )
+    .bind(flow_uuid)
+    .execute(&app.db)
+    .await
+    .unwrap();
+    app.request_magic_link(&flow_id, "carol@example.com").await;
+    let still_an_hour: bool = sqlx::query_scalar(
+        "SELECT expires_at > now() + interval '59 minutes' FROM bauth.login_flows WHERE id = $1",
+    )
+    .bind(flow_uuid)
+    .fetch_one(&app.db)
+    .await
+    .unwrap();
+    assert!(still_an_hour);
+
+    let login = app
+        .submit_magic_code(&flow_id, &app.last_magic_code("carol@example.com"))
+        .await;
+    assert_eq!(login.status, StatusCode::OK, "{}", login.body);
+}
