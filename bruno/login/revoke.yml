@@ -10,7 +10,7 @@ http:
     type: form-urlencoded
     data:
       - name: client_id
-        value: my-app
+        value: "{{client_id}}"
       - name: token
         value: ss
   auth: inherit

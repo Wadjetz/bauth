@@ -2,13 +2,31 @@ name: local
 variables:
   - name: host
     value: http://localhost:8401
+    description: ""
+  - name: client_id
+    value: my-app
+    description: ""
+  - name: redirect_uri
+    value: http://localhost:8025/auth/callback
+    description: ""
+  - name: email
+    value: test@test.fr
+    description: ""
+  - name: password
+    value: password12345
+    description: ""
   - name: flow_id
     value: ""
+    description: ""
   - name: login_code
     value: ""
+    description: ""
   - name: access_token
     value: ""
+    description: ""
   - name: refresh_token
     value: ""
+    description: ""
   - name: magic_link_code
     value: ""
+    description: ""

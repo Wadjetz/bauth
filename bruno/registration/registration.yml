@@ -10,9 +10,9 @@ http:
     type: json
     data: |-
       {
-        "client_id": "my-app",
-        "email": "test@test.fr",
-        "password": "password12345"
+        "client_id": "{{client_id}}",
+        "email": "{{email}}",
+        "password": "{{password}}"
       }
   auth: inherit
 
