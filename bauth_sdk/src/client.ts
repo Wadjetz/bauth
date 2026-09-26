@@ -166,15 +166,18 @@ export function createBauthClient(options: BauthClientOptions) {
 		/**
 		 * Emails a link and a 6-digit code: to log in, or to create the account on first use when the client
 		 * allows sign-up (no password, one email). Same answer whether the account exists or not.
+		 * Returns when the flow now expires: each email keeps it alive as long as itself.
 		 */
-		async requestMagicLink(flowId: string, email: string): Promise<void> {
+		async requestMagicLink(flowId: string, email: string): Promise<string> {
 			const params = { path: { flow_id: flowId } };
-			await unwrap(
+			const sent = await unwrap(
 				api.POST("/flows/login/{flow_id}/magic-link", {
 					params,
 					body: { email },
 				}),
 			);
+			// Each email keeps the flow alive as long as itself.
+			return sent.expires_at;
 		},
 
 		/** On the page the magic link opens: returns the code, then call `exchangeCode` with the stored verifier. */
@@ -211,7 +214,8 @@ export function createBauthClient(options: BauthClientOptions) {
 				pending?.email === email && Date.parse(pending.expiresAt) > Date.now();
 			if (pending && isLive) {
 				try {
-					await client.requestMagicLink(pending.flowId, email);
+					const expiresAt = await client.requestMagicLink(pending.flowId, email);
+					await store.write({ ...pending, expiresAt });
 					return;
 				} catch (error) {
 					const isExhausted =
@@ -221,12 +225,12 @@ export function createBauthClient(options: BauthClientOptions) {
 				}
 			}
 			const flow = await client.startLogin();
-			await client.requestMagicLink(flow.flowId, email);
+			const expiresAt = await client.requestMagicLink(flow.flowId, email);
 			await store.write({
 				flowId: flow.flowId,
 				codeVerifier: flow.codeVerifier,
 				email,
-				expiresAt: flow.expiresAt,
+				expiresAt,
 			});
 		},
 

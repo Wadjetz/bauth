@@ -66,7 +66,9 @@ test("requestMagicCode continues the flow of the same address, and restarts an e
       return json(201, { flow_id: `f${flows}`, methods: ["magic_link"], expires_at: "2999-01-01T00:00:00Z" })
     }
     emailsOnFlow++
-    return emailsOnFlow > 3 ? json(429, { code: "rate_limited", message: "" }) : json(202, { status: "magic_link_sent" })
+    if (emailsOnFlow > 3) return json(429, { code: "rate_limited", message: "" })
+    // Each email pushes the flow's expiry further.
+    return json(202, { status: "magic_link_sent", expires_at: `2999-01-0${emailsOnFlow}T00:15:00Z` })
   })
   const bauth = createBauthClient({ ...options, fetch })
   const store = memoryStore()
@@ -76,6 +78,7 @@ test("requestMagicCode continues the flow of the same address, and restarts an e
   await bauth.requestMagicCode("a@b.c", store)
   assert.equal(flows, 1, "same address, same flow")
   assert.equal(store.get().flowId, "f1")
+  assert.equal(store.get().expiresAt, "2999-01-03T00:15:00Z", "the flow's latest expiry is kept")
 
   await bauth.requestMagicCode("a@b.c", store) // 4th email: refused on f1, sent on a new flow
   assert.equal(store.get().flowId, "f2")

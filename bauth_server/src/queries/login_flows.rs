@@ -100,25 +100,30 @@ where
 
 /// Counts a magic link request, whether the account exists or not, if the flow is still pending
 /// and under `max` requests. `false` otherwise: the check is in the `UPDATE`, so concurrent
-/// requests can't go past `max`.
+/// requests can't go past `max`. Also keeps the flow alive until `link_expires_at`: the email's
+/// link and code complete this flow, so it must not expire before them. Returns the flow's new
+/// expiry, `None` when the request isn't counted.
 pub async fn count_magic_link_request<'e, E>(
     executor: E,
     id: Uuid,
     max: i32,
-) -> Result<bool, sqlx::Error>
+    link_expires_at: DateTime<Utc>,
+) -> Result<Option<DateTime<Utc>>, sqlx::Error>
 where
     E: Executor<'e, Database = Db>,
 {
-    let result = sqlx::query!(
+    sqlx::query_scalar!(
         r#"
         UPDATE bauth.login_flows
-        SET magic_link_requests = magic_link_requests + 1
+        SET magic_link_requests = magic_link_requests + 1,
+            expires_at = greatest(expires_at, $3)
         WHERE id = $1 AND completed_at IS NULL AND expires_at > now() AND magic_link_requests < $2
+        RETURNING expires_at
         "#,
         id,
-        max
+        max,
+        link_expires_at
     )
-    .execute(executor)
-    .await?;
-    Ok(result.rows_affected() == 1)
+    .fetch_optional(executor)
+    .await
 }

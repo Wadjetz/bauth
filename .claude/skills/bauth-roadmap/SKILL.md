@@ -84,13 +84,8 @@ note instead of deleting it, so numbers stay stable.
     (202 without link), has already burnt the single-use code and the user must ask for another one.
     Run the rate limit before `confirm_sensitive`; for the taken address either check first or say in
     the OpenAPI doc that the code is spent either way.
-25. **Magic link emails outlive their flow.** `MAGIC_LINK_TTL` is 15 min from the request, but the
-    flow expires 15 min after `POST /flows/login`: an email asked for at minute 10 has 5 usable minutes
-    while it says "expire dans 15 minutes". The link/code then validates, `login_flow::complete`
-    fails and the transaction rolls back (`flow_expired`, nothing consumed): the user is stuck with a
-    "valid" email. Extend the flow on each request (`expires_at = greatest(expires_at, now() + 15 min)`
-    in `count_magic_link_request`; the 3-emails cap bounds it) or cap the link's `expires_at` at the
-    flow's and word the email accordingly.
+25. *Fixed 2026-09-26: each magic link email extends its flow to the email's expiry
+    (`greatest(expires_at, …)` in `count_magic_link_request`, bounded by the 3-emails cap).*
 26. *Fixed 2026-09-26: `magic_link::request` reads the flow, runs every check, then counts the
     email with a conditional `UPDATE` (`magic_link_requests < 3`).*
 

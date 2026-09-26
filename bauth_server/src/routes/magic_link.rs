@@ -1,5 +1,6 @@
 use axum::extract::State;
 use axum::http::StatusCode;
+use chrono::DateTime;
 use chrono::TimeDelta;
 use chrono::Utc;
 use serde::Deserialize;
@@ -46,6 +47,9 @@ pub enum MagicLinkStatus {
 #[derive(Serialize, ToSchema)]
 pub struct MagicLinkResponse {
     status: MagicLinkStatus,
+    /// When the flow expires now: each email keeps it alive as long as itself. Same value whether
+    /// the account exists or not (it only depends on the flow).
+    expires_at: DateTime<Utc>,
 }
 
 #[utoipa::path(
@@ -99,12 +103,19 @@ pub async fn request(
         .email_per_address
         .check(&rate_limit::email_key(&input.email))?;
     // Counted last, so a request refused above doesn't use one of the flow's emails; and whether
-    // the account exists or not, so the limit doesn't reveal it.
-    if !queries::login_flows::count_magic_link_request(&state.db, flow_id, MAX_EMAILS_PER_FLOW)
-        .await?
-    {
+    // the account exists or not, so the limit doesn't reveal it. The flow lives as long as the
+    // email (the 3-emails cap bounds it), or a link used at minute 14 would find it expired.
+    let expires_at = Utc::now() + MAGIC_LINK_TTL;
+    let Some(flow_expires_at) = queries::login_flows::count_magic_link_request(
+        &state.db,
+        flow_id,
+        MAX_EMAILS_PER_FLOW,
+        expires_at,
+    )
+    .await?
+    else {
         return Err(flow_exhausted());
-    }
+    };
 
     let user_id = match queries::users::find_by_email(&state.db, &input.email).await? {
         Some(user) if user.disabled_at.is_none() => Some(Some(user.id)),
@@ -116,7 +127,6 @@ pub async fn request(
     if let Some(user_id) = user_id {
         let token = token::generate();
         let code = state.magic_code_key.generate(flow_id);
-        let expires_at = Utc::now() + MAGIC_LINK_TTL;
         let email = queries::magic_links::create(
             &state.db,
             flow_id,
@@ -138,6 +148,7 @@ pub async fn request(
 
     let response = MagicLinkResponse {
         status: MagicLinkStatus::MagicLinkSent,
+        expires_at: flow_expires_at,
     };
     Ok((StatusCode::ACCEPTED, AppJson(response)))
 }

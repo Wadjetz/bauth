@@ -1379,9 +1379,15 @@
       "MagicLinkResponse": {
         "type": "object",
         "required": [
-          "status"
+          "status",
+          "expires_at"
         ],
         "properties": {
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the flow expires now: each email keeps it alive as long as itself. Same value whether\nthe account exists or not (it only depends on the flow)."
+          },
           "status": {
             "$ref": "#/components/schemas/MagicLinkStatus"
           }
