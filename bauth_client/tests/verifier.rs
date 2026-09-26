@@ -1,141 +1,63 @@
-use std::sync::Arc;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
+//! `Verifier`, `Verifier::me` and the axum extractor, against `testing::FakeBauth`.
 
-use aws_lc_rs::signature::Ed25519KeyPair;
-use aws_lc_rs::signature::KeyPair;
-use axum::Router;
-use axum::extract::State;
 use axum::routing::get;
-use base64::Engine;
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use bauth_client::AccessTokenClaims;
+use bauth_client::MeError;
 use bauth_client::Verifier;
 use bauth_client::VerifyError;
-use jsonwebtoken::Algorithm;
-use jsonwebtoken::EncodingKey;
-use jsonwebtoken::Header;
-use jsonwebtoken::encode;
-use jsonwebtoken::jwk::JwkSet;
+use bauth_client::testing::FakeBauth;
 use uuid::Uuid;
-
-const ED25519_PKCS8_PREFIX: [u8; 16] = [
-    0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x04, 0x22, 0x04, 0x20,
-];
-
-struct TestKey {
-    kid: String,
-    encoding_key: EncodingKey,
-    jwk: serde_json::Value,
-}
-
-fn test_key() -> TestKey {
-    let mut seed = [0u8; 32];
-    getrandom::fill(&mut seed).unwrap();
-    let public = Ed25519KeyPair::from_seed_unchecked(&seed)
-        .unwrap()
-        .public_key()
-        .as_ref()
-        .to_vec();
-    let kid = Uuid::now_v7().to_string();
-    TestKey {
-        encoding_key: EncodingKey::from_ed_der(&[ED25519_PKCS8_PREFIX.as_slice(), &seed].concat()),
-        jwk: serde_json::json!({"kty": "OKP", "crv": "Ed25519", "alg": "EdDSA", "use": "sig", "kid": kid, "x": URL_SAFE_NO_PAD.encode(public)}),
-        kid,
-    }
-}
-
-struct FakeBauth {
-    issuer: String,
-    fetches: Arc<AtomicUsize>,
-}
-
-/// Serves `/.well-known/jwks.json` on a random port and counts requests.
-async fn fake_bauth(keys: Vec<serde_json::Value>) -> FakeBauth {
-    let fetches = Arc::new(AtomicUsize::new(0));
-    let jwks: JwkSet = serde_json::from_value(serde_json::json!({ "keys": keys })).unwrap();
-    let state = (Arc::new(jwks), fetches.clone());
-    let app = Router::new()
-        .route(
-            "/.well-known/jwks.json",
-            get(
-                |State((jwks, fetches)): State<(Arc<JwkSet>, Arc<AtomicUsize>)>| async move {
-                    fetches.fetch_add(1, Ordering::SeqCst);
-                    axum::Json((*jwks).clone())
-                },
-            ),
-        )
-        .with_state(state);
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let issuer = format!("http://{}", listener.local_addr().unwrap());
-    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    FakeBauth { issuer, fetches }
-}
-
-fn token(key: &TestKey, issuer: &str, audience: &str, typ: &str, exp_offset: i64) -> String {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as i64;
-    let claims = AccessTokenClaims {
-        iss: issuer.to_owned(),
-        sub: Uuid::now_v7(),
-        aud: audience.to_owned(),
-        client_id: "my-app-web".to_owned(),
-        sid: Uuid::now_v7(),
-        iat: now,
-        exp: now + exp_offset,
-        jti: Uuid::now_v7(),
-    };
-    let mut header = Header::new(Algorithm::EdDSA);
-    header.kid = Some(key.kid.clone());
-    header.typ = Some(typ.to_owned());
-    encode(&header, &claims, &key.encoding_key).unwrap()
-}
 
 #[tokio::test]
 async fn verifies_valid_token_and_caches_jwks() {
-    let key = test_key();
-    let bauth = fake_bauth(vec![key.jwk.clone()]).await;
-    let verifier = Verifier::new(&bauth.issuer, "my-app");
+    let bauth = FakeBauth::start();
+    let verifier = bauth.verifier("my-app");
+    let user_id = Uuid::now_v7();
 
     for _ in 0..3 {
-        let user = verifier
-            .verify(&token(&key, &bauth.issuer, "my-app", "at+jwt", 900))
-            .await
-            .unwrap();
-        assert_eq!(user.client_id, "my-app-web");
-        assert_eq!(user.id, user.claims.sub);
+        let token = bauth.access_token(user_id, "my-app");
+        let user = verifier.verify(&token).await.unwrap();
+        assert_eq!(user.id, user_id);
+        assert_eq!(user.client_id, "test-client");
+        assert_eq!(user.access_token(), token, "the raw token is kept");
     }
-    assert_eq!(
-        bauth.fetches.load(Ordering::SeqCst),
-        1,
-        "JWKS should be fetched once"
-    );
+    assert_eq!(bauth.jwks_fetches(), 1, "JWKS should be fetched once");
+}
+
+#[tokio::test]
+async fn the_token_never_shows_in_debug_output() {
+    let bauth = FakeBauth::start();
+    let token = bauth.access_token(Uuid::now_v7(), "my-app");
+    let user = bauth.verifier("my-app").verify(&token).await.unwrap();
+    let debug = format!("{user:?}");
+    assert!(!debug.contains(&token), "{debug}");
+    assert!(debug.contains("<redacted>"), "{debug}");
 }
 
 #[tokio::test]
 async fn rejects_wrong_audience_issuer_type_or_expired() {
-    let key = test_key();
-    let bauth = fake_bauth(vec![key.jwk.clone()]).await;
-    let verifier = Verifier::new(&bauth.issuer, "my-app");
+    let bauth = FakeBauth::start();
+    let verifier = bauth.verifier("my-app");
+    let claims = bauth.claims(Uuid::now_v7(), "my-app");
 
     let cases = [
         (
             "wrong audience",
-            token(&key, &bauth.issuer, "other-api", "at+jwt", 900),
+            bauth.access_token(Uuid::now_v7(), "other-api"),
         ),
         (
             "wrong issuer",
-            token(&key, "https://evil.example", "my-app", "at+jwt", 900),
+            bauth.sign(&bauth_client::AccessTokenClaims {
+                iss: "https://evil.example".into(),
+                ..claims.clone()
+            }),
         ),
-        (
-            "not an access token",
-            token(&key, &bauth.issuer, "my-app", "JWT", 900),
-        ),
+        ("not an access token", bauth.sign_with_type(&claims, "JWT")),
         (
             "expired",
-            token(&key, &bauth.issuer, "my-app", "at+jwt", -120),
+            bauth.sign(&bauth_client::AccessTokenClaims {
+                exp: claims.iat - 120,
+                ..claims.clone()
+            }),
         ),
         ("garbage", "not.a.jwt".to_owned()),
     ];
@@ -149,19 +71,18 @@ async fn rejects_wrong_audience_issuer_type_or_expired() {
 
 #[tokio::test]
 async fn unknown_key_is_rejected_and_refetch_is_rate_limited() {
-    let published = test_key();
-    let unpublished = test_key();
-    let bauth = fake_bauth(vec![published.jwk.clone()]).await;
-    let verifier = Verifier::new(&bauth.issuer, "my-app");
+    let bauth = FakeBauth::start();
+    // Same issuer and audience, but signed by a key bauth never published.
+    let other_key = FakeBauth::start();
+    let verifier = bauth.verifier("my-app");
+    let token = other_key.sign(&bauth.claims(Uuid::now_v7(), "my-app"));
 
     for _ in 0..5 {
-        let result = verifier
-            .verify(&token(&unpublished, &bauth.issuer, "my-app", "at+jwt", 900))
-            .await;
+        let result = verifier.verify(&token).await;
         assert!(matches!(result, Err(VerifyError::UnknownKey)));
     }
     assert_eq!(
-        bauth.fetches.load(Ordering::SeqCst),
+        bauth.jwks_fetches(),
         1,
         "unknown kids must not refetch on every request"
     );
@@ -169,24 +90,53 @@ async fn unknown_key_is_rejected_and_refetch_is_rate_limited() {
 
 #[tokio::test]
 async fn unreachable_bauth_is_an_error_not_a_panic() {
-    let key = test_key();
-    let verifier = Verifier::new("http://127.0.0.1:9", "my-app");
-    let result = verifier
-        .verify(&token(&key, "http://127.0.0.1:9", "my-app", "at+jwt", 900))
-        .await;
-    assert!(matches!(result, Err(VerifyError::Jwks(_))));
+    let bauth = FakeBauth::start();
+    let unreachable = "http://127.0.0.1:9";
+    let token = bauth.sign(&bauth_client::AccessTokenClaims {
+        iss: unreachable.into(),
+        ..bauth.claims(Uuid::now_v7(), "my-app")
+    });
+    let verifier = Verifier::new(unreachable, "my-app");
+    assert!(matches!(
+        verifier.verify(&token).await,
+        Err(VerifyError::Jwks(_))
+    ));
+    assert!(matches!(
+        verifier.me(&token).await,
+        Err(MeError::Unavailable(_))
+    ));
 }
 
-#[cfg(feature = "axum")]
+#[tokio::test]
+async fn me_answers_the_account_of_the_token() {
+    let bauth = FakeBauth::start();
+    let verifier = bauth.verifier("my-app");
+    let user_id = Uuid::now_v7();
+    let token = bauth.access_token(user_id, "my-app");
+
+    assert!(matches!(
+        verifier.me(&token).await,
+        Err(MeError::Unauthorized)
+    ));
+    bauth.set_account(user_id, "alice@example.com", true);
+    let me = verifier.me(&token).await.unwrap();
+    assert_eq!(
+        (me.id, me.email.as_str(), me.email_verified),
+        (user_id, "alice@example.com", true)
+    );
+}
+
 mod axum_extractor {
     use axum::Extension;
     use axum::Router;
     use axum::body::Body;
     use axum::body::to_bytes;
+    use axum::http::HeaderMap;
     use axum::http::Request;
     use axum::http::StatusCode;
     use axum::http::header;
     use bauth_client::AuthUser;
+    use bauth_client::bearer_token;
     use tower::ServiceExt;
 
     use super::*;
@@ -228,6 +178,14 @@ mod axum_extractor {
                 get(|user: Option<AuthUser>| async move {
                     user.map_or("anonymous".to_owned(), |u| u.client_id)
                 }),
+            )
+            .route(
+                "/email",
+                get(
+                    |Extension(verifier): Extension<Verifier>, user: AuthUser| async move {
+                        verifier.me(user.access_token()).await.map(|me| me.email)
+                    },
+                ),
             );
         match verifier {
             Some(verifier) => router.layer(Extension(verifier)),
@@ -237,14 +195,13 @@ mod axum_extractor {
 
     #[tokio::test]
     async fn extracts_user_or_rejects_with_401() {
-        let key = test_key();
-        let bauth = fake_bauth(vec![key.jwk.clone()]).await;
-        let app = app(Some(Verifier::new(&bauth.issuer, "my-app")));
-        let valid = token(&key, &bauth.issuer, "my-app", "at+jwt", 900);
+        let bauth = FakeBauth::start();
+        let app = app(Some(bauth.verifier("my-app")));
+        let valid = bauth.access_token(Uuid::now_v7(), "my-app");
 
         let (status, _, body) =
             call(app.clone(), "/required", Some(format!("Bearer {valid}"))).await;
-        assert_eq!((status, body.as_str()), (StatusCode::OK, "my-app-web"));
+        assert_eq!((status, body.as_str()), (StatusCode::OK, "test-client"));
         let (status, _, _) = call(app.clone(), "/required", Some(format!("bearer {valid}"))).await;
         assert_eq!(status, StatusCode::OK, "scheme is case-insensitive");
 
@@ -253,25 +210,20 @@ mod axum_extractor {
         assert_eq!(www.as_deref(), Some("Bearer error=\"invalid_token\""));
         assert!(body.contains("\"code\":\"unauthorized\""), "{body}");
 
-        let expired = token(&key, &bauth.issuer, "my-app", "at+jwt", -120);
-        let (status, _, _) =
-            call(app.clone(), "/required", Some(format!("Bearer {expired}"))).await;
-        assert_eq!(status, StatusCode::UNAUTHORIZED);
         let (status, _, _) = call(app.clone(), "/required", Some(format!("Basic {valid}"))).await;
         assert_eq!(status, StatusCode::UNAUTHORIZED);
     }
 
     #[tokio::test]
     async fn optional_user() {
-        let key = test_key();
-        let bauth = fake_bauth(vec![key.jwk.clone()]).await;
-        let app = app(Some(Verifier::new(&bauth.issuer, "my-app")));
+        let bauth = FakeBauth::start();
+        let app = app(Some(bauth.verifier("my-app")));
 
         let (status, _, body) = call(app.clone(), "/optional", None).await;
         assert_eq!((status, body.as_str()), (StatusCode::OK, "anonymous"));
-        let valid = token(&key, &bauth.issuer, "my-app", "at+jwt", 900);
+        let valid = bauth.access_token(Uuid::now_v7(), "my-app");
         let (_, _, body) = call(app.clone(), "/optional", Some(format!("Bearer {valid}"))).await;
-        assert_eq!(body, "my-app-web");
+        assert_eq!(body, "test-client");
         let (status, _, _) = call(app, "/optional", Some("Bearer garbage".to_owned())).await;
         assert_eq!(
             status,
@@ -281,11 +233,36 @@ mod axum_extractor {
     }
 
     #[tokio::test]
+    async fn me_from_a_handler_and_its_errors_as_responses() {
+        let bauth = FakeBauth::start();
+        let app = app(Some(bauth.verifier("my-app")));
+        let user_id = Uuid::now_v7();
+        let token = format!("Bearer {}", bauth.access_token(user_id, "my-app"));
+
+        // bauth doesn't know the session any more: 401, so the client refreshes.
+        let (status, www, body) = call(app.clone(), "/email", Some(token.clone())).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        assert!(www.is_some());
+        assert!(body.contains("\"code\":\"unauthorized\""), "{body}");
+
+        bauth.set_account(user_id, "alice@example.com", false);
+        let (status, _, body) = call(app, "/email", Some(token)).await;
+        assert_eq!(
+            (status, body.as_str()),
+            (StatusCode::OK, "alice@example.com")
+        );
+    }
+
+    #[tokio::test]
     async fn unreachable_bauth_is_503_and_missing_verifier_is_500() {
-        let key = test_key();
-        let valid = token(&key, "http://127.0.0.1:9", "my-app", "at+jwt", 900);
+        let bauth = FakeBauth::start();
+        let unreachable = "http://127.0.0.1:9";
+        let valid = bauth.sign(&bauth_client::AccessTokenClaims {
+            iss: unreachable.into(),
+            ..bauth.claims(Uuid::now_v7(), "my-app")
+        });
         let (status, _, body) = call(
-            app(Some(Verifier::new("http://127.0.0.1:9", "my-app"))),
+            app(Some(Verifier::new(unreachable, "my-app"))),
             "/required",
             Some(format!("Bearer {valid}")),
         )
@@ -295,5 +272,15 @@ mod axum_extractor {
 
         let (status, _, _) = call(app(None), "/required", Some(format!("Bearer {valid}"))).await;
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[test]
+    fn bearer_token_reads_the_authorization_header() {
+        let mut headers = HeaderMap::new();
+        assert_eq!(bearer_token(&headers), None);
+        headers.insert(header::AUTHORIZATION, "BEARER  abc ".parse().unwrap());
+        assert_eq!(bearer_token(&headers), Some("abc"));
+        headers.insert(header::AUTHORIZATION, "Basic abc".parse().unwrap());
+        assert_eq!(bearer_token(&headers), None);
     }
 }

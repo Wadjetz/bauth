@@ -14,7 +14,8 @@ Rewrite started 2026-09 from a 2020 actix prototype: nothing of the old code is 
 
 ## Workspace
 Crates and dependencies: see `Cargo.toml` (`bauth_server` the server, `bauth_client` the token
-`Verifier` for APIs, `bauth_core` shared claims, `bauth_sdk` the `@wadjetz/bauth-client` TS SDK).
+`Verifier` for APIs — plus `Verifier::me` (an API reading a token's email) and `AuthUser::access_token` —,
+`bauth_core` shared claims, `bauth_sdk` the `@wadjetz/bauth-client` TS SDK).
 The SDK needs **TypeScript 5** — `openapi-typescript` requires it.
 
 ## Commands
@@ -134,7 +135,9 @@ several queries take `&mut DbConnection`). The rest of the tree is what `ls` sho
   creates `_sqlx_test_*` databases and a `_sqlx_test` schema there. Never the dev Postgres.
   CI runs its own `postgres:18` service. Failed tests keep their database until the next run.
 - Add an integration test for each new flow or security rule; keep them scenario-level, not exhaustive.
-- `bauth_client/tests/verifier.rs` spins a fake JWKS server; `bauth_sdk/test` mocks fetch.
+- `bauth_client` ships `testing::FakeBauth` (feature `test-support`: JWKS + `GET /me` on a local port,
+  signs `at+jwt` tokens) for the tests of APIs; its own `tests/verifier.rs` uses it and has
+  `required-features`, so run it with `--all-features`. `bauth_sdk/test` mocks fetch.
 - Bruno collection in `bruno` (folder `me` sets `Bearer {{access_token}}`).
 
 ## Deployment
