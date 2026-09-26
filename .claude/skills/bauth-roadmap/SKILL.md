@@ -160,8 +160,7 @@ note instead of deleting it, so numbers stay stable.
     'delete_account'))` so a typo in `ConfirmationAction::as_str` can't create unreachable rows.
 40. **Bruno:** no request for `POST /me/confirmation`; `me_email.yml` / `me_delete.yml` only show the
     `password` form.
-41. **`bauth_sdk` `loginWithPassword` calls `this.startLogin()`:** breaks when the method is
-    destructured (`const { loginWithPassword } = bauth`). Use local functions, like `exchangeCode`.
+41. *Fixed 2026-09-26: `createBauthClient` methods call each other through a local `client`, not `this`.*
 42. **CLAUDE.md drift:** "Secrets sent to users… sole exception: the 6-digit magic code" — the
     confirmation code is a second one; the "Flows" line on the per-address budget should say links
     keep working for sign-up rows too (they do).

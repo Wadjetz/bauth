@@ -43,6 +43,23 @@ export interface LoginFlow {
 	codeVerifier: string;
 }
 
+/** A magic code login in progress: what `requestMagicCode` keeps and `submitMagicCode` needs. */
+export interface PendingMagicCode {
+	flowId: string;
+	/** PKCE secret proving the code exchange comes from the device that asked for the email. */
+	codeVerifier: string;
+	email: string;
+	/** When bauth forgets the flow (ISO 8601). */
+	expiresAt: string;
+}
+
+/** Where the login in progress lives between the two screens: `localStorage`, a cookie… */
+export interface FlowStore {
+	read(): PendingMagicCode | undefined | Promise<PendingMagicCode | undefined>;
+	/** `undefined` forgets the flow. */
+	write(flow: PendingMagicCode | undefined): void | Promise<void>;
+}
+
 type FetchResult<T> = { data?: T; error?: unknown; response: Response };
 
 async function unwrap<T>(result: Promise<FetchResult<T>>): Promise<T> {
@@ -71,6 +88,12 @@ export function tokenFromUrl(url: string | URL): string | null {
 }
 
 export function createBauthClient(options: BauthClientOptions) {
+	// Fail now rather than deep in the first auth call (typically an unset environment variable).
+	for (const name of ["baseUrl", "clientId", "redirectUri"] as const) {
+		if (typeof options[name] !== "string" || !options[name].trim()) {
+			throw new TypeError(`createBauthClient: \`${name}\` is required`);
+		}
+	}
 	const { clientId, redirectUri } = options;
 	const api = createFetchClient<paths>({
 		baseUrl: options.baseUrl,
@@ -91,7 +114,7 @@ export function createBauthClient(options: BauthClientOptions) {
 		return unwrap(api.POST("/oauth/token", { body, ...form }));
 	}
 
-	return {
+	const client = {
 		/** The typed openapi-fetch client, for anything not wrapped below. */
 		api,
 
@@ -133,9 +156,9 @@ export function createBauthClient(options: BauthClientOptions) {
 
 		/** Starts a flow, checks the password and exchanges the code, in one call. */
 		async loginWithPassword(email: string, password: string): Promise<Tokens> {
-			const flow = await this.startLogin();
+			const flow = await client.startLogin();
 			return exchangeCode(
-				await this.submitPassword(flow.flowId, email, password),
+				await client.submitPassword(flow.flowId, email, password),
 				flow.codeVerifier,
 			);
 		},
@@ -175,6 +198,55 @@ export function createBauthClient(options: BauthClientOptions) {
 					}),
 				)
 			).code;
+		},
+
+		/**
+		 * Emails a code (and a link) for `email`, and keeps the flow in `store`. Asking again for the
+		 * same address continues the same flow, so only the newest email's code works; once bauth
+		 * refuses more emails on it (3 per flow) or the flow expired, a new one is started.
+		 */
+		async requestMagicCode(email: string, store: FlowStore): Promise<void> {
+			const pending = await store.read();
+			const isLive =
+				pending?.email === email && Date.parse(pending.expiresAt) > Date.now();
+			if (pending && isLive) {
+				try {
+					await client.requestMagicLink(pending.flowId, email);
+					return;
+				} catch (error) {
+					const isExhausted =
+						error instanceof BauthError &&
+						(error.code === "rate_limited" || error.code === "flow_expired");
+					if (!isExhausted) throw error;
+				}
+			}
+			const flow = await client.startLogin();
+			await client.requestMagicLink(flow.flowId, email);
+			await store.write({
+				flowId: flow.flowId,
+				codeVerifier: flow.codeVerifier,
+				email,
+				expiresAt: flow.expiresAt,
+			});
+		},
+
+		/**
+		 * Turns the code typed by the user into tokens, for the flow in `store`, then forgets the
+		 * flow. Anything but digits is ignored (`123 456`). No flow in progress is `flow_expired`;
+		 * a wrong code is `invalid_code` and keeps the flow for another try.
+		 */
+		async submitMagicCode(code: string, store: FlowStore): Promise<Tokens> {
+			const pending = await store.read();
+			if (!pending) {
+				throw new BauthError(400, "flow_expired", "no magic code login in progress");
+			}
+			const authorizationCode = await client.confirmMagicCode(
+				pending.flowId,
+				code.replace(/\D/g, ""),
+			);
+			const tokens = await exchangeCode(authorizationCode, pending.codeVerifier);
+			await store.write(undefined);
+			return tokens;
 		},
 
 		exchangeCode,
@@ -301,6 +373,7 @@ export function createBauthClient(options: BauthClientOptions) {
 			);
 		},
 	};
+	return client;
 }
 
 export type BauthClient = ReturnType<typeof createBauthClient>;
