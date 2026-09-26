@@ -22,6 +22,7 @@
 use axum::Json;
 use axum::extract::FromRequestParts;
 use axum::extract::OptionalFromRequestParts;
+use axum::http::HeaderMap;
 use axum::http::HeaderValue;
 use axum::http::StatusCode;
 use axum::http::header;
@@ -30,6 +31,7 @@ use axum::response::IntoResponse;
 use axum::response::Response;
 
 use crate::AuthUser;
+use crate::MeError;
 use crate::Verifier;
 use crate::VerifyError;
 
@@ -46,7 +48,7 @@ pub enum AuthRejection {
 
 impl IntoResponse for AuthRejection {
     fn into_response(self) -> Response {
-        let (status, code) = match &self {
+        let status_code = match &self {
             Self::MissingToken
             | Self::InvalidToken(VerifyError::Malformed)
             | Self::InvalidToken(VerifyError::UnknownKey)
@@ -59,25 +61,48 @@ impl IntoResponse for AuthRejection {
             }
             Self::MissingVerifier => (StatusCode::INTERNAL_SERVER_ERROR, "internal_error"),
         };
-        if status != StatusCode::UNAUTHORIZED {
-            tracing::error!(error = %self, "cannot authenticate request");
-        }
-        let body = Json(serde_json::json!({ "code": code, "message": self.to_string() }));
-        let mut response = (status, body).into_response();
-        if status == StatusCode::UNAUTHORIZED {
-            // RFC 6750 §3: tells clients to refresh their access token.
-            response.headers_mut().insert(
-                header::WWW_AUTHENTICATE,
-                HeaderValue::from_static("Bearer error=\"invalid_token\""),
-            );
-        }
-        response
+        error_response(status_code, &self)
     }
 }
 
-/// `Authorization: Bearer <token>` (scheme is case-insensitive, RFC 7235).
-fn bearer_token(parts: &Parts) -> Option<&str> {
-    let value = parts.headers.get(header::AUTHORIZATION)?.to_str().ok()?;
+/// `Verifier::me` failures in a handler: 401 when bauth refused the token (the client refreshes
+/// it, like for `AuthRejection`), 503 when bauth can't answer.
+impl IntoResponse for MeError {
+    fn into_response(self) -> Response {
+        let status_code = match &self {
+            Self::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized"),
+            Self::Unavailable(_) | Self::UnexpectedStatus(_) => {
+                (StatusCode::SERVICE_UNAVAILABLE, "auth_unavailable")
+            }
+        };
+        error_response(status_code, &self)
+    }
+}
+
+/// `{ "code", "message" }` like bauth; a 401 also says so in `WWW-Authenticate`.
+fn error_response(
+    (status, code): (StatusCode, &'static str),
+    error: &dyn std::error::Error,
+) -> Response {
+    if status != StatusCode::UNAUTHORIZED {
+        tracing::error!(%error, "cannot authenticate request");
+    }
+    let body = Json(serde_json::json!({ "code": code, "message": error.to_string() }));
+    let mut response = (status, body).into_response();
+    if status == StatusCode::UNAUTHORIZED {
+        // RFC 6750 §3: tells clients to refresh their access token.
+        response.headers_mut().insert(
+            header::WWW_AUTHENTICATE,
+            HeaderValue::from_static("Bearer error=\"invalid_token\""),
+        );
+    }
+    response
+}
+
+/// `Authorization: Bearer <token>` (scheme is case-insensitive, RFC 7235). Handlers that took an
+/// `AuthUser` have it already: `AuthUser::access_token`.
+pub fn bearer_token(headers: &HeaderMap) -> Option<&str> {
+    let value = headers.get(header::AUTHORIZATION)?.to_str().ok()?;
     let (scheme, token) = value.split_once(' ')?;
     scheme.eq_ignore_ascii_case("bearer").then(|| token.trim())
 }
@@ -98,7 +123,7 @@ impl<S: Send + Sync> FromRequestParts<S> for AuthUser {
     type Rejection = AuthRejection;
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        let token = bearer_token(parts).ok_or(AuthRejection::MissingToken)?;
+        let token = bearer_token(&parts.headers).ok_or(AuthRejection::MissingToken)?;
         verify(parts, token).await
     }
 }
@@ -112,7 +137,7 @@ impl<S: Send + Sync> OptionalFromRequestParts<S> for AuthUser {
         parts: &mut Parts,
         _state: &S,
     ) -> Result<Option<Self>, Self::Rejection> {
-        match bearer_token(parts) {
+        match bearer_token(&parts.headers) {
             None => Ok(None),
             Some(token) => verify(parts, token).await.map(Some),
         }

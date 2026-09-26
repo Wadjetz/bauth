@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
@@ -10,6 +11,7 @@ use jsonwebtoken::Validation;
 use jsonwebtoken::decode;
 use jsonwebtoken::decode_header;
 use jsonwebtoken::jwk::JwkSet;
+use serde::Deserialize;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
@@ -35,11 +37,52 @@ pub enum VerifyError {
 }
 
 /// The authenticated user behind a verified access token.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct AuthUser {
     pub id: Uuid,
     pub client_id: String,
     pub claims: AccessTokenClaims,
+    token: String,
+}
+
+impl AuthUser {
+    /// The verified access token itself, to call bauth on the user's behalf (`Verifier::me`).
+    pub fn access_token(&self) -> &str {
+        &self.token
+    }
+}
+
+/// The token is a credential: never printed.
+impl fmt::Debug for AuthUser {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AuthUser")
+            .field("id", &self.id)
+            .field("client_id", &self.client_id)
+            .field("claims", &self.claims)
+            .field("token", &"<redacted>")
+            .finish()
+    }
+}
+
+/// The bauth account of an access token, as `GET /me` answers. Access tokens carry no email:
+/// this is how an API links its own records to an address.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct Me {
+    pub id: Uuid,
+    pub email: String,
+    pub email_verified: bool,
+    pub has_password: bool,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum MeError {
+    /// bauth refused the token: expired, or its session was revoked since it was issued.
+    #[error("bauth refused the access token")]
+    Unauthorized,
+    #[error("cannot reach bauth: {0}")]
+    Unavailable(#[from] reqwest::Error),
+    #[error("bauth answered {0} to GET /me")]
+    UnexpectedStatus(reqwest::StatusCode),
 }
 
 /// Verifies access tokens against the JWKS of a bauth issuer. Cheap to clone.
@@ -49,6 +92,7 @@ pub struct Verifier {
 }
 
 struct Inner {
+    issuer: String,
     jwks_uri: String,
     http: reqwest::Client,
     validation: Validation,
@@ -102,6 +146,7 @@ impl Verifier {
         Self {
             inner: Arc::new(Inner {
                 jwks_uri: format!("{issuer}/.well-known/jwks.json"),
+                issuer,
                 http,
                 validation,
                 cache: RwLock::default(),
@@ -123,7 +168,25 @@ impl Verifier {
             id: claims.sub,
             client_id: claims.client_id.clone(),
             claims,
+            token: token.to_owned(),
         })
+    }
+
+    /// Asks bauth for the account of `access_token` (`GET /me`), e.g. its email. Unlike `verify`,
+    /// this is a request to bauth every time, and it also fails once the session is revoked.
+    pub async fn me(&self, access_token: &str) -> Result<Me, MeError> {
+        let response = self
+            .inner
+            .http
+            .get(format!("{}/me", self.inner.issuer))
+            .bearer_auth(access_token)
+            .send()
+            .await?;
+        match response.status() {
+            reqwest::StatusCode::OK => Ok(response.json().await?),
+            reqwest::StatusCode::UNAUTHORIZED => Err(MeError::Unauthorized),
+            status => Err(MeError::UnexpectedStatus(status)),
+        }
     }
 
     async fn decoding_key(&self, kid: &str) -> Result<DecodingKey, VerifyError> {

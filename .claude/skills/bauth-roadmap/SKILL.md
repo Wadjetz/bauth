@@ -199,6 +199,8 @@ deleting it, so the numbering never shifts.
    server holding a user's `aud: other-api` token can read `/me`, list and **revoke sessions** without the
    password. Options: add the issuer as a second audience (`aud` becomes an array in `bauth_core`),
    or accept and document the trust in resource servers. Session revocation should count as sensitive.
+   Note: `bauth_client::Verifier::me` calls `/me` with an API's token (`aud` of that API):
+   restricting `aud` on `/me` must keep a way for APIs to read the email.
 8. **Per-email login limit locks the owner out.** `login_per_email` (10 then 1/30 s) is charged
    for every attempt, so wrong passwords sprayed at a victim's address make their correct login 429.
    Count failures only (separate counter) or key by `(ip, email)` with a looser per-email budget.
