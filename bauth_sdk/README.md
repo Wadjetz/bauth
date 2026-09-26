@@ -18,7 +18,7 @@ The package version follows the SDK, not the server: use the SDK released alongs
 ## Usage
 
 ```ts
-import { BauthError, createBauthClient, tokenFromUrl } from "@wadjetz/bauth-client"
+import { BauthError, createBauthClient, createSession, type FlowStore, tokenFromUrl } from "@wadjetz/bauth-client"
 
 const bauth = createBauthClient({
   baseUrl: "https://auth.example.com",
@@ -45,21 +45,23 @@ It is also the passwordless sign-up: for an unknown address (and a client with `
 account is created, email verified, when the code or link is used. No second email.
 
 ```ts
-const flow = await bauth.startLogin()
-// The link opens in a new tab: keep the flow in localStorage (sessionStorage is per tab).
-localStorage.setItem("bauth_flow", JSON.stringify({ flowId: flow.flowId, codeVerifier: flow.codeVerifier }))
-await bauth.requestMagicLink(flow.flowId, email)
+// Where the login in progress lives between the two screens (localStorage, a cookie…).
+const flows: FlowStore = {
+  read: () => JSON.parse(localStorage.getItem("bauth_flow") ?? "null") ?? undefined,
+  write: flow => (flow ? localStorage.setItem("bauth_flow", JSON.stringify(flow)) : localStorage.removeItem("bauth_flow"))
+}
 
-// Same screen: the code from the email
-const code = await bauth.confirmMagicCode(flow.flowId, digits)
-const tokens = await bauth.exchangeCode(code, flow.codeVerifier)
+// Asking again for the same address continues the flow; a new one starts after 3 emails.
+await bauth.requestMagicCode(email, flows)
+// Same screen: the code from the email ("042 917" is fine).
+const tokens = await bauth.submitMagicCode(digits, flows)
 ```
 
 ```ts
-// Page the link opens
-const saved = localStorage.getItem("bauth_flow")
+// Page the link opens (the link opens a new tab: that is why the flow is in localStorage)
+const saved = await flows.read()
 if (saved) {
-  const { codeVerifier } = JSON.parse(saved)
+  const { codeVerifier } = saved
   const code = await bauth.confirmMagicLink(tokenFromUrl(location.href)!)
   const tokens = await bauth.exchangeCode(code, codeVerifier)
 } else {
@@ -67,6 +69,30 @@ if (saved) {
   // Ask the user to type the code where they started.
 }
 ```
+
+### Session
+
+`createSession` keeps the tokens in a store of yours and knows bauth's rules: refresh ahead of
+expiry, one refresh for concurrent callers (replaying a rotated refresh token revokes the session),
+and only `invalid_grant` ends the session — offline or bauth down keeps it.
+
+```ts
+const session = createSession({
+  bauth,
+  store: {
+    read: () => JSON.parse(localStorage.getItem("bauth_tokens") ?? "null") ?? undefined,
+    write: tokens => (tokens ? localStorage.setItem("bauth_tokens", JSON.stringify(tokens)) : localStorage.removeItem("bauth_tokens"))
+  }
+})
+await session.save(tokens)
+
+// Your API client (openapi-fetch): bearer token, refresh, one replay after a 401.
+api.use(session.middleware({ onUnauthorized: () => goto("/login") }))
+```
+
+On a server keeping tokens in `httpOnly` cookies, the store reads and writes the cookies of the
+request (`expiresAt` may be left out: it is read from the token), and `session.accessToken()` gives
+the token to forward. `createAuthMiddleware` is the middleware alone, for your own token handling.
 
 ### Errors
 
