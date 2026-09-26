@@ -1041,7 +1041,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Confirmation link sent to the new address (unless it is taken) */
+            /** @description Confirmation link sent to the new address, unless it is taken: the answer is the same, and a `code` is spent either way */
             202: {
                 headers: {
                     [name: string]: unknown;

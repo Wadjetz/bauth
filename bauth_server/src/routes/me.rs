@@ -396,7 +396,7 @@ pub struct ChangeEmailResponse {
     security(("bearer_auth" = [])),
     request_body = ChangeEmailRequest,
     responses(
-        (status = 202, description = "Confirmation link sent to the new address (unless it is taken)", body = ChangeEmailResponse),
+        (status = 202, description = "Confirmation link sent to the new address, unless it is taken: the answer is the same, and a `code` is spent either way", body = ChangeEmailResponse),
         (status = 400, description = "`invalid_request`, `invalid_email`, `password_not_set`, `invalid_credentials`, `invalid_code`", body = crate::errors::ErrorBody),
         (status = 401, description = "`unauthorized`: refresh the access token", body = crate::errors::ErrorBody),
         (status = 429, description = "`rate_limited`", body = crate::errors::ErrorBody),
@@ -427,6 +427,8 @@ pub async fn change_email(
         .ok_or(ApiError::InvalidClient)
         .and_then(verification::page)?
         .to_owned();
+    // Before the confirmation: a 429 must not spend the single-use code (or a password attempt).
+    state.rate_limits.email_per_address.check(&new_email_key)?;
     confirm_sensitive(
         &state,
         &client_ip,
@@ -436,10 +438,10 @@ pub async fn change_email(
         input.code,
     )
     .await?;
-    state.rate_limits.email_per_address.check(&new_email_key)?;
 
     // Same answer whether the address is free or not: this must not reveal other accounts.
-    // A taken address simply gets no link.
+    // A taken address simply gets no link. Checked only after the confirmation, so a stolen
+    // access token alone can't probe addresses: the code is spent either way.
     if queries::users::find_by_email(&state.db, &input.new_email)
         .await?
         .is_none()

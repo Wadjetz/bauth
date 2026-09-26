@@ -538,7 +538,7 @@
         },
         "responses": {
           "202": {
-            "description": "Confirmation link sent to the new address (unless it is taken)",
+            "description": "Confirmation link sent to the new address, unless it is taken: the answer is the same, and a `code` is spent either way",
             "content": {
               "application/json": {
                 "schema": {

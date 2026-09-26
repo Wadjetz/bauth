@@ -78,12 +78,9 @@ continues. Once an item is fixed or decided, replace its text with a one-line `F
 note instead of deleting it, so numbers stay stable.
 
 ### Bugs
-24. **`POST /me/email` spends the confirmation code before the cheap checks.** `me.rs::change_email`
-    calls `confirm_sensitive` (consumes the code on success) and only then
-    `email_per_address.check(new_email)` and the taken-address lookup: a 429 there, or a taken address
-    (202 without link), has already burnt the single-use code and the user must ask for another one.
-    Run the rate limit before `confirm_sensitive`; for the taken address either check first or say in
-    the OpenAPI doc that the code is spent either way.
+24. *Fixed 2026-09-27: `change_email` checks the new address's rate limit before confirming; a
+    taken address still spends the code (checking it first would let a stolen token probe
+    accounts) — documented on the 202.*
 25. *Fixed 2026-09-26: each magic link email extends its flow to the email's expiry
     (`greatest(expires_at, …)` in `count_magic_link_request`, bounded by the 3-emails cap).*
 26. *Fixed 2026-09-26: `magic_link::request` reads the flow, runs every check, then counts the
