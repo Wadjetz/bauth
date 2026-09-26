@@ -10,8 +10,8 @@ http:
     type: json
     data: |-
       {
-        "password": "password12345",
-        "new_email": "test2@test.fr"
+        "password": "{{password}}",
+        "new_email": "new-{{email}}"
       }
   auth: inherit
 
@@ -20,3 +20,4 @@ settings:
   timeout: 0
   followRedirects: true
   maxRedirects: 5
+  forwardAuthorizationHeader: true

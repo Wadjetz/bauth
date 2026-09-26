@@ -14,7 +14,7 @@ http:
     type: json
     data: |-
       {
-        "code": "123456"
+        "code": "<code from the email>"
       }
   auth: inherit
 

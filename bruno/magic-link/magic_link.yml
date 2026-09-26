@@ -14,7 +14,7 @@ http:
     type: json
     data: |-
       {
-        "email": "test@test.fr"
+        "email": "{{email}}"
       }
   auth: inherit
 
@@ -23,3 +23,4 @@ settings:
   timeout: 0
   followRedirects: true
   maxRedirects: 5
+  forwardAuthorizationHeader: true

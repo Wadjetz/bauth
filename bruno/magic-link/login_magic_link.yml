@@ -10,8 +10,8 @@ http:
     type: json
     data: |-
       {
-        "client_id": "my-app",
-        "redirect_uri": "http://localhost:8025/auth/callback",
+        "client_id": "{{client_id}}",
+        "redirect_uri": "{{redirect_uri}}",
         "code_challenge": "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
         "code_challenge_method": "S256",
         "state": "xyz"

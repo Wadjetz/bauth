@@ -12,11 +12,11 @@ http:
       - name: grant_type
         value: authorization_code
       - name: client_id
-        value: my-app
+        value: "{{client_id}}"
       - name: code
         value: "{{login_code}}"
       - name: redirect_uri
-        value: http://localhost:8025/auth/callback
+        value: "{{redirect_uri}}"
       - name: code_verifier
         value: dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk
   auth: inherit
