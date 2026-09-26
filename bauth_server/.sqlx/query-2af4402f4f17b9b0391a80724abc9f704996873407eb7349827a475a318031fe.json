@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        UPDATE bauth.login_flows\n        SET magic_link_requests = magic_link_requests + 1\n        WHERE id = $1 AND completed_at IS NULL AND expires_at > now()\n        RETURNING client_id, magic_link_requests AS requests, expires_at\n        ",
+  "query": "\n        SELECT client_id, magic_link_requests AS requests, expires_at\n        FROM bauth.login_flows\n        WHERE id = $1 AND completed_at IS NULL AND expires_at > now()\n        ",
   "describe": {
     "columns": [
       {
@@ -48,5 +48,5 @@
       false
     ]
   },
-  "hash": "2917ca3515b34aa6c4608675e02be811e2129f05e5e6212b3d0fef4fd3c7fea9"
+  "hash": "2af4402f4f17b9b0391a80724abc9f704996873407eb7349827a475a318031fe"
 }

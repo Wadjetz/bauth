@@ -74,14 +74,16 @@ pub async fn request(
     if !email::is_valid(&input.email) {
         return Err(ApiError::InvalidEmail);
     }
-    // Counted whether the account exists or not, so the limit doesn't reveal it.
-    let Some(flow) = queries::login_flows::count_magic_link_request(&state.db, flow_id).await?
+    let Some(flow) = queries::login_flows::find_pending_magic_link_flow(&state.db, flow_id).await?
     else {
         return Err(ApiError::FlowExpired);
     };
-    if flow.requests > MAX_EMAILS_PER_FLOW {
-        let retry_after = (flow.expires_at - Utc::now()).to_std().unwrap_or_default();
-        return Err(ApiError::RateLimited { retry_after });
+    // Until the flow expires: the app starts a new one instead.
+    let flow_exhausted = || ApiError::RateLimited {
+        retry_after: (flow.expires_at - Utc::now()).to_std().unwrap_or_default(),
+    };
+    if flow.requests >= MAX_EMAILS_PER_FLOW {
+        return Err(flow_exhausted());
     }
     let client = state
         .clients
@@ -96,6 +98,13 @@ pub async fn request(
         .rate_limits
         .email_per_address
         .check(&rate_limit::email_key(&input.email))?;
+    // Counted last, so a request refused above doesn't use one of the flow's emails; and whether
+    // the account exists or not, so the limit doesn't reveal it.
+    if !queries::login_flows::count_magic_link_request(&state.db, flow_id, MAX_EMAILS_PER_FLOW)
+        .await?
+    {
+        return Err(flow_exhausted());
+    }
 
     let user_id = match queries::users::find_by_email(&state.db, &input.email).await? {
         Some(user) if user.disabled_at.is_none() => Some(Some(user.id)),

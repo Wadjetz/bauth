@@ -91,10 +91,8 @@ note instead of deleting it, so numbers stay stable.
     "valid" email. Extend the flow on each request (`expires_at = greatest(expires_at, now() + 15 min)`
     in `count_magic_link_request`; the 3-emails cap bounds it) or cap the link's `expires_at` at the
     flow's and word the email accordingly.
-26. **The 3-emails-per-flow counter is charged before the request can succeed.**
-    `magic_link::request` increments `magic_link_requests` before the client / `magic_link_url` check
-    and the `email_per_address` limit: a 429 or a misconfigured client still spends one of the three.
-    Do the cheap checks first, then count.
+26. *Fixed 2026-09-26: `magic_link::request` reads the flow, runs every check, then counts the
+    email with a conditional `UPDATE` (`magic_link_requests < 3`).*
 
 ### Security — decide
 27. **A confirmation code works for accounts that have a password too.** `confirm_sensitive` takes
