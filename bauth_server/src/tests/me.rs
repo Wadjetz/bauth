@@ -206,3 +206,36 @@ async fn confirmation_codes_are_bound_to_their_session_and_limited(db: PgPool) {
         .await;
     assert_eq!(too_late.code(), "invalid_code");
 }
+
+#[sqlx::test]
+async fn a_rate_limited_email_change_keeps_the_confirmation_code(db: PgPool) {
+    let app = TestApp::new(db).await;
+    let tokens = app.login_with_code("carol@example.com").await;
+    let code = app
+        .confirmation_code(&tokens.access, "change_email", "carol@example.com")
+        .await;
+
+    // The new address has used up its email budget (5), here through password reset requests.
+    for _ in 0..5 {
+        app.post("/recovery")
+            .json(json!({ "client_id": CLIENT_ID, "email": "busy@example.com" }))
+            .send()
+            .await;
+    }
+    let limited = app
+        .post("/me/email")
+        .bearer(&tokens.access)
+        .json(json!({ "code": code, "new_email": "busy@example.com" }))
+        .send()
+        .await;
+    assert_eq!(limited.status, StatusCode::TOO_MANY_REQUESTS);
+
+    // The code wasn't spent: it still works for another address.
+    let changed = app
+        .post("/me/email")
+        .bearer(&tokens.access)
+        .json(json!({ "code": code, "new_email": "carol@new.example.com" }))
+        .send()
+        .await;
+    assert_eq!(changed.status, StatusCode::ACCEPTED, "{}", changed.body);
+}
