@@ -105,3 +105,29 @@ async fn magic_link_emails_are_capped_per_flow_whether_the_account_exists_or_not
         "verification + 3 links"
     );
 }
+
+#[sqlx::test]
+async fn a_refused_magic_link_request_does_not_use_one_of_the_flow_emails(db: PgPool) {
+    let app = TestApp::new(db).await;
+    // Use up the per-address budget (5 emails) of busy@example.com.
+    for _ in 0..2 {
+        let flow_id = app.start_flow().await;
+        for _ in 0..3 {
+            app.request_magic_link(&flow_id, "busy@example.com").await;
+        }
+    }
+    assert_eq!(app.emails_to("busy@example.com").len(), 5);
+
+    let flow_id = app.start_flow().await;
+    let refused = app.request_magic_link(&flow_id, "busy@example.com").await;
+    assert_eq!(refused.status, StatusCode::TOO_MANY_REQUESTS);
+
+    // The flow still has its 3 emails.
+    for _ in 0..3 {
+        let sent = app.request_magic_link(&flow_id, "other@example.com").await;
+        assert_eq!(sent.status, StatusCode::ACCEPTED, "{}", sent.body);
+    }
+    let capped = app.request_magic_link(&flow_id, "other@example.com").await;
+    assert_eq!(capped.status, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(app.emails_to("other@example.com").len(), 3);
+}
