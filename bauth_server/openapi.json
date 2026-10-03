@@ -10,7 +10,7 @@
       "name": "MIT",
       "identifier": "MIT"
     },
-    "version": "0.1.0"
+    "version": "0.3.0"
   },
   "paths": {
     "/.well-known/jwks.json": {
