@@ -13,10 +13,6 @@ use axum::response::Response;
 use serde::Serialize;
 use utoipa::ToSchema;
 
-use crate::password::HashingError;
-use crate::password::PolicyError;
-use crate::password::{self};
-
 /// Errors returned to API clients. `code()` is the stable contract; `message` is for developers.
 #[derive(Debug, thiserror::Error)]
 pub enum ApiError {
@@ -24,10 +20,6 @@ pub enum ApiError {
     InvalidRequest(String),
     #[error("email address is invalid")]
     InvalidEmail,
-    #[error("password must be at least {} characters", password::MIN_CHARS)]
-    PasswordTooShort,
-    #[error("password must be at most {} characters", password::MAX_CHARS)]
-    PasswordTooLong,
     #[error("token is invalid, expired or already used")]
     InvalidToken,
     #[error("code is incorrect, expired or already used")]
@@ -38,24 +30,16 @@ pub enum ApiError {
     InvalidRedirectUri,
     #[error("code_challenge must be a S256 challenge (43 base64url characters)")]
     InvalidCodeChallenge,
-    #[error("email or password is incorrect")]
-    InvalidCredentials,
-    #[error("email address must be verified before logging in")]
-    EmailNotVerified,
     #[error("account is disabled")]
     AccountDisabled,
     #[error("login flow is unknown, expired or already completed")]
     FlowExpired,
     #[error("missing, invalid or expired access token")]
     Unauthorized,
-    #[error("this account has no password: use password reset to set one")]
-    PasswordNotSet,
     #[error("not found")]
     NotFound,
     #[error("email address is already used by another account")]
     EmailTaken,
-    #[error("this client does not allow creating accounts")]
-    SignupDisabled,
     #[error("too many attempts, retry in {} seconds", retry_after_seconds(*retry_after))]
     RateLimited { retry_after: Duration },
     #[error("internal server error")]
@@ -67,22 +51,16 @@ impl ApiError {
         match self {
             Self::InvalidRequest(_) => "invalid_request",
             Self::InvalidEmail => "invalid_email",
-            Self::PasswordTooShort => "password_too_short",
-            Self::PasswordTooLong => "password_too_long",
             Self::InvalidToken => "invalid_token",
             Self::InvalidCode => "invalid_code",
             Self::InvalidClient => "invalid_client",
             Self::InvalidRedirectUri => "invalid_redirect_uri",
             Self::InvalidCodeChallenge => "invalid_code_challenge",
-            Self::InvalidCredentials => "invalid_credentials",
-            Self::EmailNotVerified => "email_not_verified",
             Self::AccountDisabled => "account_disabled",
             Self::FlowExpired => "flow_expired",
             Self::Unauthorized => "unauthorized",
-            Self::PasswordNotSet => "password_not_set",
             Self::NotFound => "not_found",
             Self::EmailTaken => "email_taken",
-            Self::SignupDisabled => "signup_disabled",
             Self::RateLimited { .. } => "rate_limited",
             Self::Internal(_) => "internal_error",
         }
@@ -92,20 +70,14 @@ impl ApiError {
         match self {
             Self::InvalidRequest(_)
             | Self::InvalidEmail
-            | Self::PasswordTooShort
-            | Self::PasswordTooLong
             | Self::InvalidToken
             | Self::InvalidCode
             | Self::InvalidClient
             | Self::InvalidRedirectUri
             | Self::InvalidCodeChallenge
-            | Self::InvalidCredentials
-            | Self::EmailNotVerified
             | Self::AccountDisabled
-            | Self::FlowExpired => StatusCode::BAD_REQUEST,
-            Self::PasswordNotSet | Self::EmailTaken | Self::SignupDisabled => {
-                StatusCode::BAD_REQUEST
-            }
+            | Self::FlowExpired
+            | Self::EmailTaken => StatusCode::BAD_REQUEST,
             // 401 tells SDKs to refresh the access token and retry.
             Self::Unauthorized => StatusCode::UNAUTHORIZED,
             Self::NotFound => StatusCode::NOT_FOUND,
@@ -118,7 +90,7 @@ impl ApiError {
 /// Error of every app route. Apps translate `code`, which is stable; `message` is for developers.
 #[derive(Serialize, ToSchema)]
 pub struct ErrorBody {
-    #[schema(example = "invalid_credentials")]
+    #[schema(example = "invalid_code")]
     code: &'static str,
     message: String,
 }
@@ -162,23 +134,8 @@ impl From<JsonRejection> for ApiError {
     }
 }
 
-impl From<PolicyError> for ApiError {
-    fn from(error: PolicyError) -> Self {
-        match error {
-            PolicyError::TooShort => Self::PasswordTooShort,
-            PolicyError::TooLong => Self::PasswordTooLong,
-        }
-    }
-}
-
 impl From<sqlx::Error> for ApiError {
     fn from(error: sqlx::Error) -> Self {
-        Self::Internal(error.into())
-    }
-}
-
-impl From<HashingError> for ApiError {
-    fn from(error: HashingError) -> Self {
         Self::Internal(error.into())
     }
 }
@@ -224,7 +181,7 @@ mod tests {
     }
 
     async fn handler(AppJson(_input): AppJson<Input>) -> Result<StatusCode, ApiError> {
-        Err(ApiError::PasswordTooShort)
+        Err(ApiError::InvalidEmail)
     }
 
     async fn call(body: &'static str, content_type: &str) -> (StatusCode, String) {
@@ -243,7 +200,7 @@ mod tests {
     async fn handler_error_has_stable_code() {
         let (status, body) = call(r#"{"email":"a@b.c"}"#, "application/json").await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
-        assert!(body.contains(r#""code":"password_too_short""#), "{body}");
+        assert!(body.contains(r#""code":"invalid_email""#), "{body}");
     }
 
     #[tokio::test]

@@ -1,5 +1,5 @@
 /**
- * An error answered by bauth. `code` is stable (e.g. `invalid_credentials`, `flow_expired`,
+ * An error answered by bauth. `code` is stable (e.g. `invalid_code`, `flow_expired`,
  * `rate_limited`): translate it for users. `message` is for developers.
  * For `/oauth/*`, `code` is the RFC 6749 `error` (e.g. `invalid_grant`).
  */

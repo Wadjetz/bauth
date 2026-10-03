@@ -68,7 +68,7 @@ mod tests {
 
     fn client(extra: &str) -> Client {
         let toml = format!(
-            "[[clients]]\nid = \"my-app-web\"\nname = \"My App\"\nredirect_uris = [\"http://localhost:8025/auth/callback\"]\n{extra}"
+            "[[clients]]\nid = \"my-app-web\"\nname = \"My App\"\nredirect_uris = [\"http://localhost:8025/auth/callback\"]\nmagic_link_url = \"http://localhost:8025/auth/magic-link\"\n{extra}"
         );
         Clients::from_toml(&toml)
             .unwrap()

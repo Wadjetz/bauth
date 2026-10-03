@@ -1,7 +1,6 @@
 export {
 	type BauthClient,
 	type BauthClientOptions,
-	type Confirmation,
 	type ConfirmationAction,
 	createBauthClient,
 	type FlowStore,

@@ -160,7 +160,7 @@ async fn authorization_code(state: AppState, input: TokenRequest) -> Result<Resp
     if !pkce::verify(&code_verifier, &consumed.code_challenge) {
         return Err(OAuthError::InvalidGrant("code_verifier does not match"));
     }
-    // The account may have been disabled in the seconds since the password check.
+    // The account may have been disabled in the seconds since the login.
     let user = queries::users::find_by_id(&mut *tx, consumed.user_id).await?;
     if user.is_none_or(|user| user.disabled_at.is_some()) {
         return Err(OAuthError::InvalidGrant("account is disabled"));

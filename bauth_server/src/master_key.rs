@@ -22,7 +22,7 @@ pub enum MasterKeyError {
     Decrypt,
 }
 
-/// Encrypts secrets stored in the database (signing keys, TOTP secrets…) and derives the other
+/// Encrypts secrets stored in the database (signing keys) and derives the other
 /// server keys. Losing this key makes every encrypted value unrecoverable.
 pub struct MasterKey {
     cipher: XChaCha20Poly1305,

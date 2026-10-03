@@ -6,7 +6,7 @@ use crate::db::DbConnection;
 use crate::queries;
 use crate::token;
 
-/// How long a login lasts before the user must enter their password again.
+/// How long a login lasts before the user must log in again by email.
 pub const SESSION_TTL: TimeDelta = TimeDelta::days(30);
 /// A rotated refresh token still works this long without invalidating the tokens issued
 /// from it, so two tabs refreshing at the same moment both keep a working token.

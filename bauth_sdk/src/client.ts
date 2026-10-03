@@ -11,14 +11,6 @@ export type Session = Schemas["SessionResponse"];
 export type Tokens = Schemas["TokenResponse"];
 export type ConfirmationAction = Schemas["ConfirmationAction"];
 
-/**
- * Proof required by a sensitive change: the current password, or a 6-digit `code` emailed by
- * `requestConfirmation` — the only way for an account created by magic link, which has no password.
- */
-export type Confirmation =
-	| { password: string; code?: never }
-	| { code: string; password?: never };
-
 export interface BauthClientOptions {
 	/** bauth base URL, without trailing slash, e.g. `https://auth.example.com`. */
 	baseUrl: string;
@@ -82,7 +74,7 @@ const form = {
 	headers: { "Content-Type": "application/x-www-form-urlencoded" },
 };
 
-/** Reads the `#token=…` fragment of an email link (verification, magic link, password reset). */
+/** Reads the `#token=…` fragment of an email link (magic link, email change). */
 export function tokenFromUrl(url: string | URL): string | null {
 	return new URLSearchParams(new URL(url).hash.slice(1)).get("token");
 }
@@ -138,34 +130,9 @@ export function createBauthClient(options: BauthClientOptions) {
 			};
 		},
 
-		/** Password step: returns the code, then call `exchangeCode`. */
-		async submitPassword(
-			flowId: string,
-			email: string,
-			password: string,
-		): Promise<string> {
-			const params = { path: { flow_id: flowId } };
-			const result = await unwrap(
-				api.POST("/flows/login/{flow_id}/password", {
-					params,
-					body: { email, password },
-				}),
-			);
-			return result.code;
-		},
-
-		/** Starts a flow, checks the password and exchanges the code, in one call. */
-		async loginWithPassword(email: string, password: string): Promise<Tokens> {
-			const flow = await client.startLogin();
-			return exchangeCode(
-				await client.submitPassword(flow.flowId, email, password),
-				flow.codeVerifier,
-			);
-		},
-
 		/**
 		 * Emails a link and a 6-digit code: to log in, or to create the account on first use when the client
-		 * allows sign-up (no password, one email). Same answer whether the account exists or not.
+		 * allows sign-up (one email). Same answer whether the account exists or not.
 		 * Returns when the flow now expires: each email keeps it alive as long as itself.
 		 */
 		async requestMagicLink(flowId: string, email: string): Promise<string> {
@@ -176,7 +143,6 @@ export function createBauthClient(options: BauthClientOptions) {
 					body: { email },
 				}),
 			);
-			// Each email keeps the flow alive as long as itself.
 			return sent.expires_at;
 		},
 
@@ -274,62 +240,13 @@ export function createBauthClient(options: BauthClientOptions) {
 			);
 		},
 
-		// Registration and email verification
-
-		/** Same answer whether the email was free or taken. */
-		async register(email: string, password: string): Promise<void> {
-			await unwrap(
-				api.POST("/registration", {
-					body: { client_id: clientId, email, password },
-				}),
-			);
-		},
-
-		async resendVerification(email: string): Promise<void> {
-			await unwrap(
-				api.POST("/verification", { body: { client_id: clientId, email } }),
-			);
-		},
-
-		/** On the verification page: confirms email verification or an email change. */
-		async confirmVerification(token: string): Promise<void> {
-			await unwrap(api.POST("/verification/confirm", { body: { token } }));
-		},
-
-		// Password reset
-
-		async requestPasswordReset(email: string): Promise<void> {
-			await unwrap(
-				api.POST("/recovery", { body: { client_id: clientId, email } }),
-			);
-		},
-
-		/** Sets the new password and logs the user out everywhere. */
-		async resetPassword(token: string, password: string): Promise<void> {
-			await unwrap(api.POST("/recovery/reset", { body: { token, password } }));
-		},
-
 		// Account
 
 		async getMe(accessToken: string): Promise<Me> {
 			return unwrap(api.GET("/me", { headers: bearer(accessToken) }));
 		},
 
-		async changePassword(
-			accessToken: string,
-			currentPassword: string,
-			newPassword: string,
-		): Promise<void> {
-			const body = {
-				current_password: currentPassword,
-				new_password: newPassword,
-			};
-			await unwrap(
-				api.POST("/me/password", { headers: bearer(accessToken), body }),
-			);
-		},
-
-		/** Emails a 6-digit code to confirm `action`; pass it back as `{ code }`. */
+		/** Emails a 6-digit code to confirm `action` (`change_email`, `delete_account`). */
 		async requestConfirmation(
 			accessToken: string,
 			action: ConfirmationAction,
@@ -342,16 +259,21 @@ export function createBauthClient(options: BauthClientOptions) {
 			);
 		},
 
-		/** Sends a confirmation link to the new address, confirmed with `confirmVerification`. */
+		/** Sends a confirmation link to the new address, confirmed with `confirmEmailChange`. */
 		async changeEmail(
 			accessToken: string,
-			confirmation: Confirmation,
+			code: string,
 			newEmail: string,
 		): Promise<void> {
-			const body = { ...confirmation, new_email: newEmail };
+			const body = { code, new_email: newEmail };
 			await unwrap(
 				api.POST("/me/email", { headers: bearer(accessToken), body }),
 			);
+		},
+
+		/** On the `email_change_url` page the email change link opens: moves the account to the new address. */
+		async confirmEmailChange(token: string): Promise<void> {
+			await unwrap(api.POST("/email-change/confirm", { body: { token } }));
 		},
 
 		async listSessions(accessToken: string): Promise<Session[]> {
@@ -368,12 +290,9 @@ export function createBauthClient(options: BauthClientOptions) {
 			);
 		},
 
-		async deleteAccount(
-			accessToken: string,
-			confirmation: Confirmation,
-		): Promise<void> {
+		async deleteAccount(accessToken: string, code: string): Promise<void> {
 			await unwrap(
-				api.DELETE("/me", { headers: bearer(accessToken), body: confirmation }),
+				api.DELETE("/me", { headers: bearer(accessToken), body: { code } }),
 			);
 		},
 	};

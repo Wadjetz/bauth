@@ -89,8 +89,10 @@ async fn purge_deletes_only_rows_past_their_retention(db: PgPool) {
     let squatter = user_created(&db, "squatted@example.com", "8 days", false).await; // purged
     user_created(&db, "signup@example.com", "6 days", false).await;
     user_created(&db, "old@example.com", "1 year", true).await;
+    // Goes with the purged account (cascade), though not old enough to be purged by itself.
     sqlx::query(
-        "INSERT INTO bauth.password_credentials (user_id, password_hash) VALUES ($1, 'hash')",
+        "INSERT INTO bauth.email_changes (user_id, from_email, to_email, token_hash, expires_at)
+         VALUES ($1, 'squatted@example.com', 'x@example.com', sha256('s'::bytea), now() + interval '1 hour')",
     )
     .bind(squatter)
     .execute(&db)
@@ -101,10 +103,10 @@ async fn purge_deletes_only_rows_past_their_retention(db: PgPool) {
     let recent_flow = flow(&db, alice, "1 hour").await;
 
     sqlx::query(
-        "INSERT INTO bauth.email_verifications (user_id, email, token_hash, expires_at, consumed_at) VALUES
-         ($1, 'alice@example.com', sha256(gen_random_uuid()::text::bytea), now() + interval '1 day', now() - interval '8 days'),
-         ($1, 'alice@example.com', sha256(gen_random_uuid()::text::bytea), now() - interval '10 days', NULL),
-         ($1, 'alice@example.com', sha256(gen_random_uuid()::text::bytea), now() + interval '1 day', now() - interval '1 day')",
+        "INSERT INTO bauth.email_changes (user_id, from_email, to_email, token_hash, expires_at, consumed_at) VALUES
+         ($1, 'alice@example.com', 'a@example.com', sha256(gen_random_uuid()::text::bytea), now() + interval '1 day', now() - interval '8 days'),
+         ($1, 'alice@example.com', 'b@example.com', sha256(gen_random_uuid()::text::bytea), now() - interval '10 days', NULL),
+         ($1, 'alice@example.com', 'c@example.com', sha256(gen_random_uuid()::text::bytea), now() + interval '1 day', now() - interval '1 day')",
     )
     .bind(alice)
     .execute(&db)
@@ -132,9 +134,7 @@ async fn purge_deletes_only_rows_past_their_retention(db: PgPool) {
         report,
         PurgeReport {
             login_flows: 1,
-            email_verifications: 2,
-            password_resets: 0,
-            email_changes: 0,
+            email_changes: 2,
             confirmations: 1,
             sessions: 2,
             signing_keys: 0,
@@ -142,7 +142,11 @@ async fn purge_deletes_only_rows_past_their_retention(db: PgPool) {
         }
     );
     assert_eq!(count(&db, "users").await, 3);
-    assert_eq!(count(&db, "password_credentials").await, 0, "cascade");
+    assert_eq!(
+        count(&db, "email_changes").await,
+        1,
+        "alice's recent one; the squatter's went with the account"
+    );
 
     // Cascades: the purged flow took its code, the purged sessions their refresh tokens.
     assert_eq!(count(&db, "authorization_codes").await, 1);

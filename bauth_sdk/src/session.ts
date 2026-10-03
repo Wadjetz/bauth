@@ -32,7 +32,7 @@ export interface SessionOptions {
 }
 
 export interface AuthSession {
-  /** Stores the tokens of a login (`exchangeCode`, `loginWithPassword`…). */
+  /** Stores the tokens of a login (`submitMagicCode`, `exchangeCode`). */
   save(tokens: Tokens): Promise<void>
   /**
    * The access token to send, refreshed first when it is about to expire. `undefined` when

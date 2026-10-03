@@ -13,7 +13,6 @@ mod magic_code;
 mod mailer;
 mod master_key;
 mod models;
-mod password;
 mod pkce;
 mod queries;
 mod rate_limit;
@@ -34,11 +33,12 @@ use axum::routing::get;
 use dotenvy::dotenv;
 use envconfig::Envconfig;
 use tokio::net::TcpListener;
+use tracing::info;
 
 use crate::clients::Clients;
 use crate::config::ServerConfig;
 use crate::db::DbPool;
-use crate::magic_code::MagicCodeKey;
+use crate::magic_code::CodeKeys;
 use crate::mailer::Mailer;
 use crate::master_key::MasterKey;
 use crate::rate_limit::RateLimits;
@@ -52,7 +52,7 @@ struct AppState {
     clients: Arc<Clients>,
     signing_keys: SharedSigningKeys,
     rate_limits: Arc<RateLimits>,
-    magic_code_key: Arc<MagicCodeKey>,
+    code_keys: Arc<CodeKeys>,
 }
 
 #[tokio::main]
@@ -109,12 +109,17 @@ async fn main() {
         clients: Arc::new(clients),
         signing_keys,
         rate_limits,
-        magic_code_key: Arc::new(MagicCodeKey::new(&master_key)),
+        code_keys: Arc::new(CodeKeys::new(&master_key)),
     });
 
     let listener = TcpListener::bind(config.bind_addr)
         .await
         .expect("Failed to bind address");
+
+    info!(
+        "Listening for HTTP requests on {}",
+        &listener.local_addr().unwrap()
+    );
 
     // ConnectInfo gives handlers the TCP peer address, needed for per-IP rate limits.
     axum::serve(

@@ -15,7 +15,6 @@ envconfig.workspace = true
 sqlx.workspace = true
 uuid.workspace = true
 chrono.workspace = true
-argon2.workspace = true
 thiserror.workspace = true
 governor.workspace = true
 tokio-cron-scheduler.workspace = true
@@ -37,4 +36,6 @@ aws-lc-rs.workspace = true
 jsonwebtoken.workspace = true
 
 [dev-dependencies]
+# Contract tests: what bauth answers must deserialize into the client crate's types.
+bauth_client = { path = "../bauth_client" }
 tower = { version = "~0.5", features = ["util"] }

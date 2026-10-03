@@ -68,14 +68,12 @@ several queries take `&mut DbConnection`). The rest of the tree is what `ls` sho
 - Refresh rotation: reusing a rotated token within 30 s is allowed (two tabs); later, it's a retry
   if no successor was used (unused successors get `superseded_at`), otherwise theft → revoke session.
   A superseded token coming back also revokes the session.
-- Password login requires a verified email; magic link (or its code), reset and email change links verify it.
-- Anyone can register an address they don't own: a magic link/code login that verifies an account
-  deletes its password and revokes its sessions (`magic_link::log_in`, notice email sent). Unverified
-  accounts are purged after 7 days. Lock order in those transactions: `users` row, then credentials.
-- Passwordless sign-up goes through the magic link, never `/registration` (one email only): an unknown
-  address gets a "create your account" email when the client `allow_signup` (row with `user_id` NULL);
-  the account is created, verified and without password, when the link or code is used — or joined if
-  it was registered meanwhile (same unverified-account rule as above). Nothing exists before.
+- **No passwords** (removed 2026-10-02, migration `drop_passwords`; its down migration recreates the
+  tables should they come back): login and sign-up are the magic link or its code, later Google.
+- Sign-up goes through the magic link: an unknown address gets a "create your account" email when the
+  client `allow_signup` (row with `user_id` NULL); the account is created, verified, when the link or
+  code is used — or joined if it was created meanwhile. Nothing exists before. Using an email verifies
+  the address (`magic_link::log_in`); unverified accounts (imported ones) are purged after 7 days.
 - Magic link email = link + 6-digit code, one `magic_links` row: using either consumes it. The code
   (`POST /flows/login/{id}/magic-code`) is typed on the device that asked (mobile mail apps open links
   elsewhere). Only 10^6 values, so (`magic_code.rs`, `routes/magic_link.rs`): looked up by flow, newest
@@ -83,28 +81,27 @@ several queries take `&mut DbConnection`). The rest of the tree is what `ls` sho
   24 h (sum of `code_failures` by `email`) — past that codes are refused for the address, links still
   work. Checks run under an advisory xact lock on the address (sign-ups have no user row) so concurrent
   guesses can't overshoot. HMAC keyed by
-  `MasterKey::derive("magic_code")` over `flow_id || code`; 3 emails per flow (counted on `login_flows`
+  `MasterKey::derive("magic_code")` over `flow_id || code` (confirmation codes: their own key,
+  `"confirmation_code"`, over `session_id || code`; limits shared in `magic_code.rs`); 3 emails per flow (counted on `login_flows`
   whether the account exists or not); `invalid_code` for wrong code / unknown flow / no email sent /
   address budget spent.
 
 ## Security invariants (keep them when changing code)
-- Secrets sent to users are random 256-bit tokens; only their SHA-256 is stored. Sole exception: the
-  6-digit magic code (HMAC, flow-bound, few attempts — see Flows).
+- Secrets sent to users are random 256-bit tokens; only their SHA-256 is stored. Sole exceptions: the
+  6-digit magic and confirmation codes (HMAC, bound to their flow or session, few attempts — see Flows).
 - Single-use tokens are consumed atomically: `UPDATE … SET consumed_at = now() WHERE … IS NULL RETURNING`.
 - Email links carry the token in the URL **fragment** and are confirmed by a **POST** from the app page
   (mail scanners follow GET links). Each link stores the address it was sent to and is refused if the
   account's email changed since.
-- No account enumeration: registration, verification resend, recovery, magic link and email change answer identically
-  whether the address exists; argon2 runs (or `verify_dummy`) before touching the DB.
+- No account enumeration: magic link and email change answer identically whether the address exists.
 - `redirect_uri` compared byte for byte; client URLs must be https, http on localhost, or a native app
   scheme containing a dot (`com.example.app:/…`, RFC 8252).
-- Rate limits are checked before argon2 / DB writes. `X-Forwarded-For` only trusted from
+- Rate limits are checked before DB writes and emails. `X-Forwarded-For` only trusted from
   `BAUTH_TRUSTED_PROXIES`.
 - `CurrentUser` checks the session in the DB: revocation is immediate for `/me`.
-  Password, email change and account deletion require the current password — or, for an account
-  without one, a 6-digit code emailed by `POST /me/confirmation` (`confirmations`, bound to the
-  session **and** the action, 15 min, 5 wrong codes then consumed, 10 per account a day, account row
-  locked). `/me/password` still goes through password reset: a code must not set a password.
+  Email change and account deletion require a 6-digit code emailed by `POST /me/confirmation`
+  (`confirmations`, bound to the session **and** the action, 15 min, 5 wrong codes then consumed,
+  10 per account a day, account row locked): an access token alone isn't enough.
 - `ServerConfig` has no `Debug` (it holds secrets). `MasterKey` has a redacting `Debug`.
 - CORS allows only client origins: origins of each client's http(s) URLs,
   plus `allowed_origins` (Tauri: `tauri://localhost`, `http://tauri.localhost`). No credentials.
@@ -118,18 +115,20 @@ several queries take `&mut DbConnection`). The rest of the tree is what `ls` sho
 ## Configuration
 - Env: the list is `.env.example`. Non-obvious: `BAUTH_ISSUER` takes no trailing slash, and
   `BAUTH_MASTER_KEY` is base64 32 bytes — losing it invalidates every signing key.
-- `bauth.toml` clients (`deny_unknown_fields`): `id`, `name`, `redirect_uris`, `allow_signup`,
-  `audience`, `password_reset_url`, `magic_link_url`, `verification_url` (email confirmation page:
-  password registration, verification resend and email change fail without it), `allowed_origins`.
+- `bauth.toml` clients (`deny_unknown_fields`): `id`, `name`, `redirect_uris`, `magic_link_url`
+  (required: the only login method), `allow_signup`, `audience`, `email_change_url` (page of the
+  email change confirmation link, posted to `/email-change/confirm`: `POST /me/email` fails without
+  it), `allowed_origins`.
 
 ## Tests
 - Unit tests next to the code (crypto, validation, config, rate limits…).
 - Integration tests in `bauth_server/src/tests/`: the real router (`app(state)`) against a fresh
   Postgres database per test (`#[sqlx::test]`), emails captured by `Mailer::capture()`.
-  `TestApp` has helpers (`register_verified`, `login`, `refresh`, `last_token`, `age_rotations`…).
-  Files: `oauth` (PKCE, code replay, refresh rotation), `accounts` (verification, no enumeration,
-  reset, magic link and code, passwordless sign-up, stale links), `me` (session revocation, password change, deletion),
-  `protections` (rate limits, per-flow email cap, X-Forwarded-For, CORS), `me` also covers confirmation codes, `jobs` (purge retention and lock),
+  `TestApp` has helpers (`create_account`, `login` by magic code, `refresh`, `last_token`,
+  `last_magic_code`, `confirmation_code`, `age_rotations`…). Files: `oauth` (PKCE, code replay,
+  refresh rotation), `accounts` (magic link and code, sign-up, email change and stale links), `me`
+  (session revocation, deletion, confirmation codes), `protections` (rate limits, per-flow email cap,
+  X-Forwarded-For, CORS), `jobs` (purge retention and lock),
   `key_rotation` (prepublication, handover, unpublication, emergency retirement).
 - `DATABASE_URL` points to the dedicated `postgres-test` compose service (port 5440, in-memory): sqlx
   creates `_sqlx_test_*` databases and a `_sqlx_test` schema there. Never the dev Postgres.
@@ -145,7 +144,7 @@ several queries take `&mut DbConnection`). The rest of the tree is what `ls` sho
   `BAUTH_CONFIG=/etc/bauth/bauth.toml` (mount it). Migrations run at startup.
 - `release.yml` (on GitHub release): check then push `ghcr.io/wadjetz/bauth:{latest,sha}`.
 - `@wadjetz/bauth-client` is published by hand (`npm publish`, see README "Releasing the SDK"): bump it
-  with any server API change — `0.1.1` predates `client_id` on `POST /verification`.
+  with any server API change (the passwordless API is `0.3.0`).
 - Meant to run behind a reverse proxy (TLS, `X-Forwarded-For` from `BAUTH_TRUSTED_PROXIES`).
 
 ## Audit findings (2026-09-15, full read of `bauth_server`, `bauth_client`, migrations)
@@ -155,21 +154,14 @@ Only items 1–4 (the pre-production blockers) are kept here; items 5–23 and t
 (2026-09-16, items 24–43: magic code, sign-up, confirmations, SDK) are in the `bauth-roadmap` skill.
 
 ### Fix before production
-1. *Fixed 2026-09-15: pre-registration takeover through magic link — a magic link/code login on an
-   unverified account drops its password and sessions; unverified accounts are purged after 7 days
-   (see Flows). Residual: item 28.*
-2. **Pending email changes survive a password reset/change.** `recovery::reset` and
-   `me::change_password` call `password_resets::consume_all_for_user` but not the same for
-   `email_changes`: someone who knew the old password and requested `POST /me/email` keeps a 1 h link
-   that moves the account to their address after the owner reset the password. Fix: add
-   `email_changes::consume_all_for_user` to both, and consider storing the requesting `session_id`
-   in `email_changes` so a revoked session's link dies too.
+1. *Fixed 2026-09-15 (pre-registration takeover through magic link); moot since passwords were
+   removed 2026-10-02: nobody can set up an account for an address they don't own.*
+2. *Moot 2026-10-02: no password reset nor change any more. Requesting an email change needs a
+   code from the mailbox, so a stolen access token alone can't start one.*
 3. **Unlimited unauthenticated endpoints.** `POST /flows/login` inserts a row per call (redirect URI
    + 512 B `state`, purged after 1 day) with no `ClientIp` limit; `/oauth/token` and `/oauth/revoke`
    open a transaction (`FOR UPDATE`) per call with no limit either. Add per-IP limiters.
-4. **`recovery::reset` hashes before checking the token** (`password::hash` runs before
-   `password_resets::consume`): argon2 for anyone, bounded only by `token_per_ip`. Do a cheap
-   pending-token check first, like `submit_password` does with `login_flows::is_pending`.
+4. *Fixed 2026-10-02: password reset removed with the passwords.*
 
 ### Should fix / decide, and hygiene
 Items 5–23 (refresh grace fork, `state` never returned, `aud` on `/me`, per-email limit, trusted
@@ -182,15 +174,17 @@ stays usable by the real app (a 256-bit verifier can't be brute-forced); refresh
 `FOR UPDATE`; RFC 9068 claims and `typ: at+jwt` checked on both sides; JWKS prepublication (24 h)
 above the client cache (1 h); XChaCha20-Poly1305 with per-key AAD; token hashes only; JSON routes
 need a preflight so cross-origin login CSRF is not possible; emails built with `lettre::Mailbox`
-(no header injection); body limits (axum 2 MB, password 128 chars, `state` 512 B, email 254).
+(no header injection); body limits (axum 2 MB, `state` 512 B, email 254).
 
 ## Scope (decided 2026-09-15)
-Login methods: **password, magic link (+ 6-digit code), and later Google**. Nothing else is planned for now: don't
+Login methods: **magic link (+ 6-digit code), and later Google** — passwords were removed 2026-10-02. Nothing else is planned for now: don't
 propose OIDC provider features, TOTP/passkeys, admin UI, etc. unless the maintainer asks.
 
 ## Not done yet
-- Audit items 2–4 above (before production).
-- Import of users from an existing app (keep UUIDs, bcrypt → argon2id rehash on first login).
+- Audit item 3 above (before production).
+- Import of users from an existing app happens in SQL on the other app's side (same database): keep the
+  UUIDs (they become the tokens' `sub`) and set `email_verified_at`, or the purge deletes the accounts
+  after 7 days. No password to import.
 - **Sign in with Google** (bauth is an OIDC *client* of Google, it does not need to be an OIDC
   provider). Design — identities table, flow, linking rules, config — in the `bauth-roadmap` skill.
 

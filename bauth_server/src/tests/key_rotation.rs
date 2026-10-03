@@ -29,8 +29,8 @@ fn sorted(mut kids: Vec<String>) -> Vec<String> {
 #[sqlx::test]
 async fn rotation_publishes_first_hands_over_then_unpublishes(db: PgPool) {
     let app = TestApp::new(db).await;
-    app.register_verified("alice@example.com").await;
-    let old_token = app.login("alice@example.com", PASSWORD).await.access;
+    app.create_account("alice@example.com").await;
+    let old_token = app.login("alice@example.com").await.access;
     let old_kid = kid(&old_token);
 
     let rotate = || signing_keys::rotate_if_due(&app.db, &app.master_key);
@@ -50,16 +50,13 @@ async fn rotation_publishes_first_hands_over_then_unpublishes(db: PgPool) {
         published_kids(&app).await,
         sorted(vec![old_kid.clone(), new_kid.clone()])
     );
-    assert_eq!(
-        kid(&app.login("alice@example.com", PASSWORD).await.access),
-        old_kid
-    );
+    assert_eq!(kid(&app.login("alice@example.com").await.access), old_kid);
 
     // Day 1: handover. Tokens signed by the old key remain valid.
     app.sql("UPDATE bauth.signing_keys SET active_at = now() - interval '1 second' WHERE active_at > now()").await;
     app.sql("UPDATE bauth.signing_keys SET retired_at = now() - interval '1 second' WHERE retired_at IS NOT NULL").await;
     app.reload_keys().await;
-    let new_token = app.login("alice@example.com", PASSWORD).await.access;
+    let new_token = app.login("alice@example.com").await.access;
     assert_eq!(kid(&new_token), new_kid);
     assert_eq!(
         app.get("/me").bearer(&old_token).send().await.status,
@@ -83,14 +80,14 @@ async fn rotation_publishes_first_hands_over_then_unpublishes(db: PgPool) {
 #[sqlx::test]
 async fn retiring_every_key_by_hand_creates_a_new_one_and_purge_drops_old_keys(db: PgPool) {
     let app = TestApp::new(db).await;
-    app.register_verified("alice@example.com").await;
-    let compromised = kid(&app.login("alice@example.com", PASSWORD).await.access);
+    app.create_account("alice@example.com").await;
+    let compromised = kid(&app.login("alice@example.com").await.access);
 
     // Emergency: the key leaked. Retire it long enough ago that it leaves the JWKS at once.
     app.sql("UPDATE bauth.signing_keys SET retired_at = now() - interval '31 days'")
         .await;
     app.reload_keys().await;
-    let replacement = kid(&app.login("alice@example.com", PASSWORD).await.access);
+    let replacement = kid(&app.login("alice@example.com").await.access);
     assert_ne!(replacement, compromised);
     assert_eq!(published_kids(&app).await, vec![replacement]);
 

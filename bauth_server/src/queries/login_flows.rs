@@ -32,24 +32,6 @@ where
     .await
 }
 
-/// Cheap check before hashing: is this flow still waiting for credentials?
-pub async fn is_pending<'e, E>(executor: E, id: Uuid) -> Result<bool, sqlx::Error>
-where
-    E: Executor<'e, Database = Db>,
-{
-    sqlx::query_scalar!(
-        r#"
-        SELECT EXISTS (
-            SELECT 1 FROM bauth.login_flows
-            WHERE id = $1 AND completed_at IS NULL AND expires_at > now()
-        ) AS "pending!"
-        "#,
-        id
-    )
-    .fetch_one(executor)
-    .await
-}
-
 /// Atomically marks the flow completed. `false` if it expired or was completed concurrently.
 pub async fn complete<'e, E>(executor: E, id: Uuid) -> Result<bool, sqlx::Error>
 where
@@ -99,8 +81,8 @@ where
 }
 
 /// Counts a magic link request, whether the account exists or not, if the flow is still pending
-/// and under `max` requests. `false` otherwise: the check is in the `UPDATE`, so concurrent
-/// requests can't go past `max`. Also keeps the flow alive until `link_expires_at`: the email's
+/// and under `max` requests. The check is in the `UPDATE`, so concurrent requests can't go past
+/// `max`. Also keeps the flow alive until `link_expires_at`: the email's
 /// link and code complete this flow, so it must not expire before them. Returns the flow's new
 /// expiry, `None` when the request isn't counted.
 pub async fn count_magic_link_request<'e, E>(

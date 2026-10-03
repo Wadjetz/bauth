@@ -22,20 +22,10 @@ static TEMPLATES: LazyLock<Tera> = LazyLock::new(|| {
         "components.html",
         "base.html",
         "base.txt",
-        "verify_email.html",
-        "verify_email.txt",
-        "account_already_exists.html",
-        "account_already_exists.txt",
-        "password_reset.html",
-        "password_reset.txt",
-        "password_changed.html",
-        "password_changed.txt",
         "magic_link.html",
         "magic_link.txt",
         "confirmation_code.html",
         "confirmation_code.txt",
-        "unverified_password_removed.html",
-        "unverified_password_removed.txt",
         "confirm_email_change.html",
         "confirm_email_change.txt",
         "email_changed.html",
@@ -62,49 +52,6 @@ fn render(to: &str, subject: String, template: &str, mut context: Context) -> Em
         text: format!("{}\n", text.trim_end()),
         html: render("html"),
     }
-}
-
-pub fn verify_email(to: &str, link: &str) -> Email {
-    let mut context = Context::new();
-    context.insert("link", link);
-    render(
-        to,
-        "Confirmez votre adresse email".to_owned(),
-        "verify_email",
-        context,
-    )
-}
-
-/// Sent when someone registers with an address that already has an account.
-pub fn account_already_exists(to: &str) -> Email {
-    render(
-        to,
-        "Tentative d'inscription avec votre adresse email".to_owned(),
-        "account_already_exists",
-        Context::new(),
-    )
-}
-
-pub fn password_reset(to: &str, app_name: &str, link: &str) -> Email {
-    let mut context = Context::new();
-    context.insert("app_name", app_name);
-    context.insert("link", link);
-    render(
-        to,
-        format!("Réinitialisez votre mot de passe {app_name}"),
-        "password_reset",
-        context,
-    )
-}
-
-/// Sent after a reset, so the owner notices if they weren't the one who did it.
-pub fn password_changed(to: &str) -> Email {
-    render(
-        to,
-        "Votre mot de passe a été modifié".to_owned(),
-        "password_changed",
-        Context::new(),
-    )
 }
 
 /// The code is for another device than the mailbox's: mobile mail apps open links elsewhere.
@@ -154,17 +101,6 @@ pub fn confirmation_code(to: &str, action: &str, code: &str) -> Email {
     )
 }
 
-/// Sent when a magic link login verifies an account whose password was set before its address
-/// was confirmed: whoever registered may not be the owner.
-pub fn unverified_password_removed(to: &str) -> Email {
-    render(
-        to,
-        "Le mot de passe de votre compte a été supprimé".to_owned(),
-        "unverified_password_removed",
-        Context::new(),
-    )
-}
-
 /// Sent to the new address: clicking the link proves the user owns it.
 pub fn confirm_email_change(to: &str, link: &str) -> Email {
     let mut context = Context::new();
@@ -206,14 +142,9 @@ mod tests {
 
     fn all() -> Vec<Email> {
         vec![
-            verify_email("a@b.fr", LINK),
-            account_already_exists("a@b.fr"),
-            password_reset("a@b.fr", "App", LINK),
-            password_changed("a@b.fr"),
             magic_link("a@b.fr", "App", LINK, "042917"),
             magic_signup("a@b.fr", "App", LINK, "042917"),
             confirmation_code("a@b.fr", "supprimer votre compte", "042917"),
-            unverified_password_removed("a@b.fr"),
             confirm_email_change("a@b.fr", LINK),
             email_changed("a@b.fr", "c@d.fr"),
             account_deleted("a@b.fr"),
