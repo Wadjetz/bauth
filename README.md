@@ -48,21 +48,23 @@ UPDATE_OPENAPI=1 SQLX_OFFLINE=true cargo test -p bauth_server openapi
 cd bauth_sdk && npm run generate && npm test
 ```
 
-## Releasing the SDK
+## Releasing
 
-`@wadjetz/bauth-client` is published by hand. Release it together with any server change to the API
-(its types come from `openapi.json`), with a version telling how compatible it is: `patch` for fixes,
-`minor` for additions — and, while in `0.x`, for breaking changes too.
+A release is a version bump merged into `main`: the server and `@wadjetz/bauth-client` share one
+version, telling how compatible the API is (the SDK types come from `openapi.json`): `patch` for
+fixes, `minor` for additions — and, while in `0.x`, for breaking changes too.
 
 ```sh
-npm login                               # sessions expire: check with `npm whoami`
-cd bauth_sdk
-npm run generate && npm test            # types match openapi.json, tests pass
-npm version minor --no-git-tag-version  # bumps package.json and package-lock.json
-npm publish                             # `prepack` rebuilds dist/
+# set the new version in Cargo.toml ([workspace.package]), then:
+cd bauth_sdk && npm version 0.4.0 --no-git-tag-version && cd ..   # package.json and package-lock.json
+UPDATE_OPENAPI=1 SQLX_OFFLINE=true cargo test -p bauth_server openapi   # Cargo.lock, openapi.json
+cd bauth_sdk && npm run generate && npm test
 ```
 
-Then commit the version bump.
+Once it is on `main`, `release.yml` sees that `v<version>` has no tag yet: it runs the checks, pushes
+`ghcr.io/wadjetz/bauth:<version>` (and `:<major>.<minor>`, `:latest`, `:<sha>`), publishes the SDK to
+npm (trusted publishing, with provenance), then creates the tag and the GitHub release with generated
+notes. If a step fails, re-run the workflow: what was already done is skipped.
 
 ## Docker
 
@@ -73,7 +75,7 @@ podman run -p 8401:8401 \
   -e BAUTH_MASTER_KEY=… \
   -e BAUTH_ISSUER=https://auth.example.com \
   -e BAUTH_SMTP_URL=smtps://… \
-  ghcr.io/wadjetz/bauth:latest
+  ghcr.io/wadjetz/bauth:0.3   # or an exact version, or `latest`
 ```
 
 Migrations run at startup. See [`.env.example`](.env.example) for every setting.
