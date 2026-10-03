@@ -2,7 +2,7 @@
 authors = ["Egor Berezovskiy"]
 license = "MIT"
 edition = "2024"
-version = "0.3.0"
+version = "0.3.1"
 publish = false
 
 [profile.release]
@@ -51,7 +51,7 @@ sqlx = { version = "~0.9", default-features = false, features = [
   "tls-rustls-aws-lc-rs",
 ] }
 # Data types
-uuid = { version = "~1.26", features = ["serde", "v4", "v7"] }
+uuid = { version = "~1.27", features = ["serde", "v4", "v7"] }
 chrono = { version = "~0.4.45", features = ["serde"] }
 # Serialisation
 serde = { version = "~1.0", features = ["derive"] }
