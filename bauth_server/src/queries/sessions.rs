@@ -94,24 +94,6 @@ where
     .await
 }
 
-/// Logs the user out everywhere. Returns how many sessions were revoked.
-pub async fn revoke_all_for_user<'e, E>(executor: E, user_id: Uuid) -> Result<u64, sqlx::Error>
-where
-    E: Executor<'e, Database = Db>,
-{
-    let result = sqlx::query!(
-        r#"
-        UPDATE bauth.sessions
-        SET revoked_at = now()
-        WHERE user_id = $1 AND revoked_at IS NULL
-        "#,
-        user_id
-    )
-    .execute(executor)
-    .await?;
-    Ok(result.rows_affected())
-}
-
 /// Who is behind an access token, if its session is still usable.
 pub struct AuthenticatedSession {
     pub user_id: Uuid,
@@ -196,27 +178,4 @@ where
     .execute(executor)
     .await?;
     Ok(result.rows_affected() == 1)
-}
-
-/// Logs the user out everywhere except `keep`. Returns how many sessions were revoked.
-pub async fn revoke_all_for_user_except<'e, E>(
-    executor: E,
-    user_id: Uuid,
-    keep: Uuid,
-) -> Result<u64, sqlx::Error>
-where
-    E: Executor<'e, Database = Db>,
-{
-    let result = sqlx::query!(
-        r#"
-        UPDATE bauth.sessions
-        SET revoked_at = now()
-        WHERE user_id = $1 AND id <> $2 AND revoked_at IS NULL
-        "#,
-        user_id,
-        keep
-    )
-    .execute(executor)
-    .await?;
-    Ok(result.rows_affected())
 }

@@ -208,7 +208,6 @@ fn me(accounts: &Accounts, headers: &HeaderMap) -> Response {
             "id": id,
             "email": email,
             "email_verified": email_verified,
-            "has_password": false,
             "created_at": "2026-01-01T00:00:00Z",
         }))
         .into_response(),

@@ -71,7 +71,6 @@ pub struct Me {
     pub id: Uuid,
     pub email: String,
     pub email_verified: bool,
-    pub has_password: bool,
 }
 
 #[derive(Debug, thiserror::Error)]

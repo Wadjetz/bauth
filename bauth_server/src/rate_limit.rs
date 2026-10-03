@@ -1,4 +1,4 @@
-//! In-memory rate limits for endpoints that burn CPU (argon2) or send emails.
+//! In-memory rate limits for endpoints that send emails or check guessable codes and tokens.
 //! Budgets live in this process: with several instances, each enforces its own.
 
 use std::net::IpAddr;
@@ -49,15 +49,11 @@ impl Limiter {
 
 pub struct RateLimits {
     trusted_proxies: Vec<IpAddr>,
-    /// Password attempts per account: slows down guessing without locking the owner out.
-    pub login_per_email: Limiter,
-    /// Password attempts per client IP, across accounts (credential stuffing).
-    pub login_per_ip: Limiter,
-    /// Emails per recipient (verification, reset, magic link), against inbox flooding.
+    /// Emails per recipient (magic link, confirmation code, email change), against inbox flooding.
     pub email_per_address: Limiter,
     /// Requests that send an email, per client IP.
     pub email_per_ip: Limiter,
-    /// Token confirmations (email links, password reset), per client IP.
+    /// Token and code confirmations (email links, magic and confirmation codes), per client IP.
     pub token_per_ip: Limiter,
 }
 
@@ -65,8 +61,6 @@ impl RateLimits {
     pub fn new(trusted_proxies: Vec<IpAddr>) -> Self {
         Self {
             trusted_proxies,
-            login_per_email: Limiter::new(10, Duration::from_secs(30)),
-            login_per_ip: Limiter::new(30, Duration::from_secs(2)),
             email_per_address: Limiter::new(5, Duration::from_secs(3 * 60)),
             email_per_ip: Limiter::new(20, Duration::from_secs(30)),
             token_per_ip: Limiter::new(30, Duration::from_secs(2)),
@@ -80,8 +74,6 @@ impl RateLimits {
             loop {
                 interval.tick().await;
                 for limiter in [
-                    &self.login_per_email,
-                    &self.login_per_ip,
                     &self.email_per_address,
                     &self.email_per_ip,
                     &self.token_per_ip,

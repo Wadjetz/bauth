@@ -5,36 +5,15 @@ use sqlx::PgPool;
 
 use super::*;
 
-#[sqlx::test]
-async fn password_guessing_is_slowed_down_per_account(db: PgPool) {
-    let app = TestApp::new(db).await;
-    app.register_verified("alice@example.com").await;
-    app.register_verified("bob@example.com").await;
+/// Asks for a magic link email (limited per IP), as if from `forwarded_for`.
+async fn email_from(app: &TestApp, i: usize, forwarded_for: &str) -> StatusCode {
     let flow_id = app.start_flow().await;
-
-    for _ in 0..10 {
-        let attempt = app
-            .submit_password(&flow_id, "alice@example.com", "wrong password!!")
-            .await;
-        assert_eq!(attempt.code(), "invalid_credentials");
-    }
-    let limited = app
-        .submit_password(&flow_id, "alice@example.com", PASSWORD)
-        .await;
-    assert_eq!(limited.status, StatusCode::TOO_MANY_REQUESTS);
-    assert!(limited.headers.contains_key(header::RETRY_AFTER));
-
-    // Other accounts, even from the same IP, are not affected.
-    let other = app
-        .submit_password(&flow_id, "bob@example.com", "wrong password!!")
-        .await;
-    assert_eq!(other.code(), "invalid_credentials");
-}
-
-async fn register_from(app: &TestApp, i: usize, forwarded_for: &str) -> StatusCode {
-    app.post("/registration")
-        .header(header::HeaderName::from_static("x-forwarded-for"), forwarded_for)
-        .json(json!({ "client_id": CLIENT_ID, "email": format!("user{i}@example.com"), "password": PASSWORD }))
+    app.post(&format!("/flows/login/{flow_id}/magic-link"))
+        .header(
+            header::HeaderName::from_static("x-forwarded-for"),
+            forwarded_for,
+        )
+        .json(json!({ "email": format!("user{i}@example.com") }))
         .send()
         .await
         .status
@@ -46,7 +25,7 @@ async fn forwarded_for_is_ignored_unless_the_peer_is_a_trusted_proxy(db: PgPool)
     let direct = TestApp::new(db.clone()).await;
     let mut statuses = Vec::new();
     for i in 0..21 {
-        statuses.push(register_from(&direct, i, &format!("198.51.100.{i}")).await);
+        statuses.push(email_from(&direct, i, &format!("198.51.100.{i}")).await);
     }
     assert_eq!(statuses.last(), Some(&StatusCode::TOO_MANY_REQUESTS));
 
@@ -54,7 +33,7 @@ async fn forwarded_for_is_ignored_unless_the_peer_is_a_trusted_proxy(db: PgPool)
     let proxied = TestApp::with_trusted_proxies(db, vec!["127.0.0.1".parse().unwrap()]).await;
     for i in 100..121 {
         assert_eq!(
-            register_from(&proxied, i, &format!("198.51.100.{i}")).await,
+            email_from(&proxied, i, &format!("198.51.100.{i}")).await,
             StatusCode::ACCEPTED
         );
     }
@@ -87,7 +66,7 @@ async fn cors_only_allows_client_origins(db: PgPool) {
 #[sqlx::test]
 async fn magic_link_emails_are_capped_per_flow_whether_the_account_exists_or_not(db: PgPool) {
     let app = TestApp::new(db).await;
-    app.register_verified("alice@example.com").await;
+    app.create_account("alice@example.com").await;
 
     for email in ["alice@example.com", "nobody@example.com"] {
         let flow_id = app.start_flow().await;
@@ -99,11 +78,7 @@ async fn magic_link_emails_are_capped_per_flow_whether_the_account_exists_or_not
         assert_eq!(capped.status, StatusCode::TOO_MANY_REQUESTS, "{email}");
         assert!(capped.headers.contains_key(header::RETRY_AFTER));
     }
-    assert_eq!(
-        app.emails_to("alice@example.com").len(),
-        1 + 3,
-        "verification + 3 links"
-    );
+    assert_eq!(app.emails_to("alice@example.com").len(), 3, "3 links");
 }
 
 #[sqlx::test]

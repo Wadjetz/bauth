@@ -5,26 +5,18 @@ use axum::routing::post;
 
 use crate::AppState;
 
+mod email_change;
 mod login;
 mod magic_link;
 mod me;
 mod oauth;
 mod openapi;
-mod recovery;
-mod registration;
-mod verification;
 mod well_known;
 
 pub fn router() -> Router<AppState> {
     Router::new()
-        .route("/registration", post(registration::register))
-        .route("/verification", post(verification::resend))
-        .route("/verification/confirm", post(verification::confirm))
+        .route("/email-change/confirm", post(email_change::confirm))
         .route("/flows/login", post(login::create_flow))
-        .route(
-            "/flows/login/{flow_id}/password",
-            post(login::submit_password),
-        )
         .route(
             "/flows/login/{flow_id}/magic-link",
             post(magic_link::request),
@@ -37,13 +29,10 @@ pub fn router() -> Router<AppState> {
         .route("/me", get(me::get).delete(me::delete_account))
         .route("/me/confirmation", post(me::request_confirmation))
         .route("/me/email", post(me::change_email))
-        .route("/me/password", post(me::change_password))
         .route("/me/sessions", get(me::list_sessions))
         .route("/me/sessions/{session_id}", delete(me::revoke_session))
         .route("/oauth/token", post(oauth::token))
         .route("/oauth/revoke", post(oauth::revoke))
-        .route("/recovery", post(recovery::request))
-        .route("/recovery/reset", post(recovery::reset))
         .route("/openapi.json", get(openapi::openapi_json))
         .route("/.well-known/jwks.json", get(well_known::jwks))
         .route(

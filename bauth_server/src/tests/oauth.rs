@@ -11,10 +11,10 @@ use sqlx::PgPool;
 use super::*;
 
 #[sqlx::test]
-async fn password_login_issues_tokens_verifiable_with_the_jwks(db: PgPool) {
+async fn login_issues_tokens_verifiable_with_the_jwks(db: PgPool) {
     let app = TestApp::new(db).await;
-    app.register_verified("alice@example.com").await;
-    let tokens = app.login("alice@example.com", PASSWORD).await;
+    app.create_account("alice@example.com").await;
+    let tokens = app.login("alice@example.com").await;
 
     // What an API does with bauth_client: verify against the published keys.
     let jwks: JwkSet =
@@ -32,15 +32,19 @@ async fn password_login_issues_tokens_verifiable_with_the_jwks(db: PgPool) {
     assert_eq!(me.body["id"], claims.sub.to_string());
     assert_eq!(me.body["email"], "alice@example.com");
     assert_eq!(claims.client_id, CLIENT_ID);
+    // What `bauth_client::Verifier::me` reads from this answer.
+    let parsed: bauth_client::Me = serde_json::from_value(me.body).unwrap();
+    assert_eq!((parsed.id, parsed.email_verified), (claims.sub, true));
 }
 
 #[sqlx::test]
 async fn authorization_code_is_bound_to_pkce_and_single_use(db: PgPool) {
     let app = TestApp::new(db).await;
-    app.register_verified("alice@example.com").await;
+    app.create_account("alice@example.com").await;
     let flow_id = app.start_flow().await;
+    app.request_magic_link(&flow_id, "alice@example.com").await;
     let code = app
-        .submit_password(&flow_id, "alice@example.com", PASSWORD)
+        .submit_magic_code(&flow_id, &app.last_magic_code("alice@example.com"))
         .await
         .str("code");
 
@@ -71,8 +75,8 @@ async fn authorization_code_is_bound_to_pkce_and_single_use(db: PgPool) {
 #[sqlx::test]
 async fn refresh_retry_after_a_lost_response_keeps_the_user_logged_in(db: PgPool) {
     let app = TestApp::new(db).await;
-    app.register_verified("alice@example.com").await;
-    let first = app.login("alice@example.com", PASSWORD).await.refresh;
+    app.create_account("alice@example.com").await;
+    let first = app.login("alice@example.com").await.refresh;
 
     let lost = app.refresh(&first).await.str("refresh_token");
     app.age_rotations().await;
@@ -94,8 +98,8 @@ async fn refresh_retry_after_a_lost_response_keeps_the_user_logged_in(db: PgPool
 #[sqlx::test]
 async fn reusing_an_already_used_refresh_token_revokes_the_session(db: PgPool) {
     let app = TestApp::new(db).await;
-    app.register_verified("alice@example.com").await;
-    let stolen = app.login("alice@example.com", PASSWORD).await.refresh;
+    app.create_account("alice@example.com").await;
+    let stolen = app.login("alice@example.com").await.refresh;
 
     let legit = app.refresh(&stolen).await.str("refresh_token");
     let latest = app.refresh(&legit).await.str("refresh_token");
@@ -112,8 +116,8 @@ async fn reusing_an_already_used_refresh_token_revokes_the_session(db: PgPool) {
 #[sqlx::test]
 async fn two_tabs_refreshing_at_once_both_keep_working(db: PgPool) {
     let app = TestApp::new(db).await;
-    app.register_verified("alice@example.com").await;
-    let shared = app.login("alice@example.com", PASSWORD).await.refresh;
+    app.create_account("alice@example.com").await;
+    let shared = app.login("alice@example.com").await.refresh;
 
     let tab1 = app.refresh(&shared).await.str("refresh_token");
     let tab2 = app.refresh(&shared).await.str("refresh_token");
@@ -125,8 +129,8 @@ async fn two_tabs_refreshing_at_once_both_keep_working(db: PgPool) {
 #[sqlx::test]
 async fn logout_revokes_the_session(db: PgPool) {
     let app = TestApp::new(db).await;
-    app.register_verified("alice@example.com").await;
-    let tokens = app.login("alice@example.com", PASSWORD).await;
+    app.create_account("alice@example.com").await;
+    let tokens = app.login("alice@example.com").await;
 
     let revoke = app
         .post("/oauth/revoke")

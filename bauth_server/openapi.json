@@ -54,6 +54,50 @@
         }
       }
     },
+    "/email-change/confirm": {
+      "post": {
+        "tags": [
+          "Me"
+        ],
+        "summary": "Called by the app page the email change link opens (`email_change_url`): moves the account to\nthe new address (`POST /me/email`), which the link proves the user owns.",
+        "operationId": "confirm_email_change",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmEmailChangeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Email change applied"
+          },
+          "400": {
+            "description": "`invalid_request`, `invalid_token`, `account_disabled`, `email_taken`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`rate_limited`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/flows/login": {
       "post": {
         "tags": [
@@ -162,7 +206,7 @@
         "tags": [
           "Login"
         ],
-        "summary": "Emails a link and a 6-digit code for this flow: to log in if the account exists, or to create\nit (verified, without password) when the client allows sign-up. Nothing is created before the\nlink or code is used. Always answers the same way. A new email disables the previous code.",
+        "summary": "Emails a link and a 6-digit code for this flow: to log in if the account exists, or to create\nit (verified) when the client allows sign-up. Nothing is created before the\nlink or code is used. Always answers the same way. A new email disables the previous code.",
         "operationId": "request_magic_link",
         "parameters": [
           {
@@ -209,68 +253,6 @@
           },
           "429": {
             "description": "`rate_limited`; after 3 emails on one flow, until the flow expires: start a new one",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/flows/login/{flow_id}/password": {
-      "post": {
-        "tags": [
-          "Login"
-        ],
-        "operationId": "submit_password",
-        "parameters": [
-          {
-            "name": "flow_id",
-            "in": "path",
-            "description": "Returned by `POST /flows/login`",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PasswordRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Exchange `code` on `/oauth/token`",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LoginResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "`invalid_request`, `flow_expired`, `invalid_client`, `invalid_credentials`, `account_disabled`, `email_not_verified`",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "`rate_limited`",
             "content": {
               "application/json": {
                 "schema": {
@@ -399,7 +381,7 @@
         "tags": [
           "Me"
         ],
-        "summary": "Deletes the account right away, with every session and credential.\nAccess tokens already given to APIs stay valid until they expire (15 min).",
+        "summary": "Deletes the account right away, with every session.\nAccess tokens already given to APIs stay valid until they expire (15 min).",
         "operationId": "delete_account",
         "requestBody": {
           "content": {
@@ -416,7 +398,7 @@
             "description": "Account deleted"
           },
           "400": {
-            "description": "`invalid_request`, `password_not_set`, `invalid_credentials`, `invalid_code`",
+            "description": "`invalid_request`, `invalid_code`",
             "content": {
               "application/json": {
                 "schema": {
@@ -458,7 +440,7 @@
         "tags": [
           "Me"
         ],
-        "summary": "Emails a 6-digit code confirming `action`, to send back as `code` on that route. It is the way\naccounts without a password (magic link only) confirm sensitive changes. The code only works\nfor this action, from this session, for 5 wrong attempts; a new one disables the previous.",
+        "summary": "Emails a 6-digit code confirming `action`, to send back as `code` on that route: a stolen\naccess token alone can't change the email or delete the account. The code only works for this\naction, from this session, for 5 wrong attempts; a new one disables the previous.",
         "operationId": "request_confirmation",
         "requestBody": {
           "content": {
@@ -524,7 +506,7 @@
         "tags": [
           "Me"
         ],
-        "summary": "Sends a confirmation link to the new address. The account keeps its current address\nuntil the link is used, on `POST /verification/confirm`. Confirmed by the current password,\nor by a code from `POST /me/confirmation` when the account has none.",
+        "summary": "Sends a confirmation link to the new address. The account keeps its current address\nuntil the link is used, on `POST /email-change/confirm`. Confirmed by a code from\n`POST /me/confirmation`.",
         "operationId": "change_email",
         "requestBody": {
           "content": {
@@ -548,66 +530,7 @@
             }
           },
           "400": {
-            "description": "`invalid_request`, `invalid_email`, `password_not_set`, `invalid_credentials`, `invalid_code`",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "`unauthorized`: refresh the access token",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "`rate_limited`",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer_auth": []
-          }
-        ]
-      }
-    },
-    "/me/password": {
-      "post": {
-        "tags": [
-          "Me"
-        ],
-        "summary": "Changes the password, then logs out every other session of the user.",
-        "operationId": "change_password",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ChangePasswordRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "204": {
-            "description": "Password changed; other sessions revoked"
-          },
-          "400": {
-            "description": "`invalid_request`, `password_too_short`, `password_too_long`, `password_not_set`, `invalid_credentials`",
+            "description": "`invalid_request`, `invalid_email`, `invalid_code`",
             "content": {
               "application/json": {
                 "schema": {
@@ -824,246 +747,6 @@
           }
         }
       }
-    },
-    "/recovery": {
-      "post": {
-        "tags": [
-          "Recovery"
-        ],
-        "summary": "Sends a reset link if the account exists. Always answers the same way,\nso this endpoint can't be used to find out which emails are registered.",
-        "operationId": "request_password_reset",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RecoveryRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "202": {
-            "description": "Same answer whether the account exists or not",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RecoveryResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "`invalid_request`, `invalid_client`, `invalid_email`",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "`rate_limited`",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/recovery/reset": {
-      "post": {
-        "tags": [
-          "Recovery"
-        ],
-        "summary": "Sets a new password from a reset link, then logs the user out everywhere.",
-        "operationId": "reset_password",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ResetRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "204": {
-            "description": "Password set; every session revoked"
-          },
-          "400": {
-            "description": "`invalid_request`, `password_too_short`, `password_too_long`, `invalid_token`, `account_disabled`",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "`rate_limited`",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/registration": {
-      "post": {
-        "tags": [
-          "Registration"
-        ],
-        "operationId": "register",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RegistrationRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "202": {
-            "description": "Same answer whether the email is free or taken",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RegistrationResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "`invalid_request`, `invalid_client`, `signup_disabled`, `invalid_email`, `password_too_short`, `password_too_long`",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "`rate_limited`",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/verification": {
-      "post": {
-        "tags": [
-          "Registration"
-        ],
-        "summary": "Sends a new verification link if the account exists and isn't verified yet.\nAlways answers the same way, so it can't be used to find out which emails are registered.",
-        "operationId": "resend_verification",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ResendRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "202": {
-            "description": "Same answer whether a link was sent or not",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ResendResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "`invalid_request`, `invalid_client`, `invalid_email`",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "`rate_limited`",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/verification/confirm": {
-      "post": {
-        "tags": [
-          "Registration"
-        ],
-        "summary": "Confirms an email link: either verifying the account's address, or moving the account\nto a new address (`POST /me/email`). Both use the same app page.",
-        "operationId": "confirm_verification",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ConfirmRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "204": {
-            "description": "Email verified, or email change applied"
-          },
-          "400": {
-            "description": "`invalid_request`, `invalid_token`, `account_disabled`, `email_taken`",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "`rate_limited`",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        }
-      }
     }
   },
   "components": {
@@ -1130,25 +813,16 @@
       "ChangeEmailRequest": {
         "type": "object",
         "required": [
+          "code",
           "new_email"
         ],
         "properties": {
           "code": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": "string",
             "description": "6-digit code from `POST /me/confirmation` with `action: \"change_email\"`."
           },
           "new_email": {
             "type": "string"
-          },
-          "password": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Current password, or `code` for an account that has none."
           }
         }
       },
@@ -1169,17 +843,13 @@
           "confirmation_sent"
         ]
       },
-      "ChangePasswordRequest": {
+      "ConfirmEmailChangeRequest": {
         "type": "object",
         "required": [
-          "current_password",
-          "new_password"
+          "token"
         ],
         "properties": {
-          "current_password": {
-            "type": "string"
-          },
-          "new_password": {
+          "token": {
             "type": "string"
           }
         }
@@ -1197,7 +867,7 @@
       },
       "ConfirmationAction": {
         "type": "string",
-        "description": "What a code confirms. An account with no password proves itself by email instead.",
+        "description": "What a code confirms: sensitive changes need proof of the mailbox, not just an access token.",
         "enum": [
           "change_email",
           "delete_account"
@@ -1263,20 +933,13 @@
       },
       "DeleteAccountRequest": {
         "type": "object",
+        "required": [
+          "code"
+        ],
         "properties": {
           "code": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": "string",
             "description": "6-digit code from `POST /me/confirmation` with `action: \"delete_account\"`."
-          },
-          "password": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Current password, or `code` for an account that has none."
           }
         }
       },
@@ -1290,7 +953,7 @@
         "properties": {
           "code": {
             "type": "string",
-            "example": "invalid_credentials"
+            "example": "invalid_code"
           },
           "message": {
             "type": "string"
@@ -1324,7 +987,6 @@
       "LoginMethod": {
         "type": "string",
         "enum": [
-          "password",
           "magic_link"
         ]
       },
@@ -1405,7 +1067,6 @@
           "id",
           "email",
           "email_verified",
-          "has_password",
           "created_at"
         ],
         "properties": {
@@ -1417,9 +1078,6 @@
             "type": "string"
           },
           "email_verified": {
-            "type": "boolean"
-          },
-          "has_password": {
             "type": "boolean"
           },
           "id": {
@@ -1443,136 +1101,6 @@
               "string",
               "null"
             ]
-          }
-        }
-      },
-      "PasswordRequest": {
-        "type": "object",
-        "required": [
-          "email",
-          "password"
-        ],
-        "properties": {
-          "email": {
-            "type": "string"
-          },
-          "password": {
-            "type": "string"
-          }
-        }
-      },
-      "RecoveryRequest": {
-        "type": "object",
-        "required": [
-          "client_id",
-          "email"
-        ],
-        "properties": {
-          "client_id": {
-            "type": "string"
-          },
-          "email": {
-            "type": "string"
-          }
-        }
-      },
-      "RecoveryResponse": {
-        "type": "object",
-        "required": [
-          "status"
-        ],
-        "properties": {
-          "status": {
-            "$ref": "#/components/schemas/RecoveryStatus"
-          }
-        }
-      },
-      "RecoveryStatus": {
-        "type": "string",
-        "enum": [
-          "recovery_sent"
-        ]
-      },
-      "RegistrationRequest": {
-        "type": "object",
-        "required": [
-          "client_id",
-          "email",
-          "password"
-        ],
-        "properties": {
-          "client_id": {
-            "type": "string"
-          },
-          "email": {
-            "type": "string"
-          },
-          "password": {
-            "type": "string"
-          }
-        }
-      },
-      "RegistrationResponse": {
-        "type": "object",
-        "required": [
-          "status"
-        ],
-        "properties": {
-          "status": {
-            "$ref": "#/components/schemas/RegistrationStatus"
-          }
-        }
-      },
-      "RegistrationStatus": {
-        "type": "string",
-        "enum": [
-          "verification_sent"
-        ]
-      },
-      "ResendRequest": {
-        "type": "object",
-        "required": [
-          "client_id",
-          "email"
-        ],
-        "properties": {
-          "client_id": {
-            "type": "string"
-          },
-          "email": {
-            "type": "string"
-          }
-        }
-      },
-      "ResendResponse": {
-        "type": "object",
-        "required": [
-          "status"
-        ],
-        "properties": {
-          "status": {
-            "$ref": "#/components/schemas/ResendStatus"
-          }
-        }
-      },
-      "ResendStatus": {
-        "type": "string",
-        "enum": [
-          "verification_sent"
-        ]
-      },
-      "ResetRequest": {
-        "type": "object",
-        "required": [
-          "token",
-          "password"
-        ],
-        "properties": {
-          "password": {
-            "type": "string"
-          },
-          "token": {
-            "type": "string"
           }
         }
       },

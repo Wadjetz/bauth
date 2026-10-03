@@ -40,6 +40,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/email-change/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Called by the app page the email change link opens (`email_change_url`): moves the account to
+         *     the new address (`POST /me/email`), which the link proves the user owns.
+         */
+        post: operations["confirm_email_change"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/flows/login": {
         parameters: {
             query?: never;
@@ -89,26 +109,10 @@ export interface paths {
         put?: never;
         /**
          * Emails a link and a 6-digit code for this flow: to log in if the account exists, or to create
-         *     it (verified, without password) when the client allows sign-up. Nothing is created before the
+         *     it (verified) when the client allows sign-up. Nothing is created before the
          *     link or code is used. Always answers the same way. A new email disables the previous code.
          */
         post: operations["request_magic_link"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/flows/login/{flow_id}/password": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["submit_password"];
         delete?: never;
         options?: never;
         head?: never;
@@ -178,7 +182,7 @@ export interface paths {
         put?: never;
         post?: never;
         /**
-         * Deletes the account right away, with every session and credential.
+         * Deletes the account right away, with every session.
          *     Access tokens already given to APIs stay valid until they expire (15 min).
          */
         delete: operations["delete_account"];
@@ -197,9 +201,9 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Emails a 6-digit code confirming `action`, to send back as `code` on that route. It is the way
-         *     accounts without a password (magic link only) confirm sensitive changes. The code only works
-         *     for this action, from this session, for 5 wrong attempts; a new one disables the previous.
+         * Emails a 6-digit code confirming `action`, to send back as `code` on that route: a stolen
+         *     access token alone can't change the email or delete the account. The code only works for this
+         *     action, from this session, for 5 wrong attempts; a new one disables the previous.
          */
         post: operations["request_confirmation"];
         delete?: never;
@@ -219,27 +223,10 @@ export interface paths {
         put?: never;
         /**
          * Sends a confirmation link to the new address. The account keeps its current address
-         *     until the link is used, on `POST /verification/confirm`. Confirmed by the current password,
-         *     or by a code from `POST /me/confirmation` when the account has none.
+         *     until the link is used, on `POST /email-change/confirm`. Confirmed by a code from
+         *     `POST /me/confirmation`.
          */
         post: operations["change_email"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/me/password": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Changes the password, then logs out every other session of the user. */
-        post: operations["change_password"];
         delete?: never;
         options?: never;
         head?: never;
@@ -312,99 +299,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/recovery": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Sends a reset link if the account exists. Always answers the same way,
-         *     so this endpoint can't be used to find out which emails are registered.
-         */
-        post: operations["request_password_reset"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/recovery/reset": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Sets a new password from a reset link, then logs the user out everywhere. */
-        post: operations["reset_password"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/registration": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["register"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/verification": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Sends a new verification link if the account exists and isn't verified yet.
-         *     Always answers the same way, so it can't be used to find out which emails are registered.
-         */
-        post: operations["resend_verification"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/verification/confirm": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Confirms an email link: either verifying the account's address, or moving the account
-         *     to a new address (`POST /me/email`). Both use the same app page.
-         */
-        post: operations["confirm_verification"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -423,25 +317,22 @@ export interface components {
         };
         ChangeEmailRequest: {
             /** @description 6-digit code from `POST /me/confirmation` with `action: "change_email"`. */
-            code?: string | null;
+            code: string;
             new_email: string;
-            /** @description Current password, or `code` for an account that has none. */
-            password?: string | null;
         };
         ChangeEmailResponse: {
             status: components["schemas"]["ChangeEmailStatus"];
         };
         /** @enum {string} */
         ChangeEmailStatus: "confirmation_sent";
-        ChangePasswordRequest: {
-            current_password: string;
-            new_password: string;
+        ConfirmEmailChangeRequest: {
+            token: string;
         };
         ConfirmRequest: {
             token: string;
         };
         /**
-         * @description What a code confirms. An account with no password proves itself by email instead.
+         * @description What a code confirms: sensitive changes need proof of the mailbox, not just an access token.
          * @enum {string}
          */
         ConfirmationAction: "change_email" | "delete_account";
@@ -463,13 +354,11 @@ export interface components {
         };
         DeleteAccountRequest: {
             /** @description 6-digit code from `POST /me/confirmation` with `action: "delete_account"`. */
-            code?: string | null;
-            /** @description Current password, or `code` for an account that has none. */
-            password?: string | null;
+            code: string;
         };
         /** @description Error of every app route. Apps translate `code`, which is stable; `message` is for developers. */
         ErrorBody: {
-            /** @example invalid_credentials */
+            /** @example invalid_code */
             code: string;
             message: string;
         };
@@ -481,7 +370,7 @@ export interface components {
             methods: components["schemas"]["LoginMethod"][];
         };
         /** @enum {string} */
-        LoginMethod: "password" | "magic_link";
+        LoginMethod: "magic_link";
         /** @description What a login method returns once the user is authenticated. */
         LoginResponse: {
             code: string;
@@ -514,7 +403,6 @@ export interface components {
             created_at: string;
             email: string;
             email_verified: boolean;
-            has_password: boolean;
             /** Format: uuid */
             id: string;
         };
@@ -522,42 +410,6 @@ export interface components {
         OAuthErrorBody: {
             error: string;
             error_description?: string | null;
-        };
-        PasswordRequest: {
-            email: string;
-            password: string;
-        };
-        RecoveryRequest: {
-            client_id: string;
-            email: string;
-        };
-        RecoveryResponse: {
-            status: components["schemas"]["RecoveryStatus"];
-        };
-        /** @enum {string} */
-        RecoveryStatus: "recovery_sent";
-        RegistrationRequest: {
-            client_id: string;
-            email: string;
-            password: string;
-        };
-        RegistrationResponse: {
-            status: components["schemas"]["RegistrationStatus"];
-        };
-        /** @enum {string} */
-        RegistrationStatus: "verification_sent";
-        ResendRequest: {
-            client_id: string;
-            email: string;
-        };
-        ResendResponse: {
-            status: components["schemas"]["ResendStatus"];
-        };
-        /** @enum {string} */
-        ResendStatus: "verification_sent";
-        ResetRequest: {
-            password: string;
-            token: string;
         };
         /**
          * @description RFC 7009. `token_type_hint` is accepted and ignored: only refresh tokens can be revoked,
@@ -643,6 +495,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuthorizationServerMetadata"];
+                };
+            };
+        };
+    };
+    confirm_email_change: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfirmEmailChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description Email change applied */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `invalid_request`, `invalid_token`, `account_disabled`, `email_taken` */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description `rate_limited` */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };
@@ -760,51 +652,6 @@ export interface operations {
                 };
             };
             /** @description `rate_limited`; after 3 emails on one flow, until the flow expires: start a new one */
-            429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    submit_password: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Returned by `POST /flows/login` */
-                flow_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PasswordRequest"];
-            };
-        };
-        responses: {
-            /** @description Exchange `code` on `/oauth/token` */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LoginResponse"];
-                };
-            };
-            /** @description `invalid_request`, `flow_expired`, `invalid_client`, `invalid_credentials`, `account_disabled`, `email_not_verified` */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description `rate_limited` */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -948,7 +795,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description `invalid_request`, `password_not_set`, `invalid_credentials`, `invalid_code` */
+            /** @description `invalid_request`, `invalid_code` */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -1050,56 +897,7 @@ export interface operations {
                     "application/json": components["schemas"]["ChangeEmailResponse"];
                 };
             };
-            /** @description `invalid_request`, `invalid_email`, `password_not_set`, `invalid_credentials`, `invalid_code` */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description `unauthorized`: refresh the access token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description `rate_limited` */
-            429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    change_password: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ChangePasswordRequest"];
-            };
-        };
-        responses: {
-            /** @description Password changed; other sessions revoked */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description `invalid_request`, `password_too_short`, `password_too_long`, `password_not_set`, `invalid_credentials` */
+            /** @description `invalid_request`, `invalid_email`, `invalid_code` */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -1272,212 +1070,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OAuthErrorBody"];
-                };
-            };
-        };
-    };
-    request_password_reset: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RecoveryRequest"];
-            };
-        };
-        responses: {
-            /** @description Same answer whether the account exists or not */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RecoveryResponse"];
-                };
-            };
-            /** @description `invalid_request`, `invalid_client`, `invalid_email` */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description `rate_limited` */
-            429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    reset_password: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ResetRequest"];
-            };
-        };
-        responses: {
-            /** @description Password set; every session revoked */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description `invalid_request`, `password_too_short`, `password_too_long`, `invalid_token`, `account_disabled` */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description `rate_limited` */
-            429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    register: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RegistrationRequest"];
-            };
-        };
-        responses: {
-            /** @description Same answer whether the email is free or taken */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RegistrationResponse"];
-                };
-            };
-            /** @description `invalid_request`, `invalid_client`, `signup_disabled`, `invalid_email`, `password_too_short`, `password_too_long` */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description `rate_limited` */
-            429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    resend_verification: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ResendRequest"];
-            };
-        };
-        responses: {
-            /** @description Same answer whether a link was sent or not */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ResendResponse"];
-                };
-            };
-            /** @description `invalid_request`, `invalid_client`, `invalid_email` */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description `rate_limited` */
-            429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    confirm_verification: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ConfirmRequest"];
-            };
-        };
-        responses: {
-            /** @description Email verified, or email change applied */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description `invalid_request`, `invalid_token`, `account_disabled`, `email_taken` */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description `rate_limited` */
-            429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };

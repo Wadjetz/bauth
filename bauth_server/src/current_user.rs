@@ -18,7 +18,7 @@ const LEEWAY_SECONDS: u64 = 30;
 /// The user behind `Authorization: Bearer <access token>`, for bauth's own `/me` routes.
 ///
 /// Unlike an API using `bauth_client`, bauth checks the session in the database on every
-/// request: a password change or a logout locks tokens out immediately, not after 15 minutes.
+/// request: a logout or a revoked session locks tokens out immediately, not after 15 minutes.
 pub struct CurrentUser {
     pub id: Uuid,
     pub email: String,
@@ -50,7 +50,7 @@ impl FromRequestParts<AppState> for CurrentUser {
         let mut validation = Validation::new(Algorithm::EdDSA);
         validation.set_issuer(&[&state.config.issuer]);
         // Any audience: tokens are issued for an app's API, and the user may use any of them
-        // to manage their own account. Sensitive changes ask for the password again.
+        // to manage their own account. Sensitive changes ask for an emailed code.
         validation.validate_aud = false;
         validation.set_required_spec_claims(&["exp", "iss", "sub"]);
         validation.leeway = LEEWAY_SECONDS;

@@ -4,6 +4,9 @@ use lettre::Message;
 use lettre::Tokio1Executor;
 use lettre::message::Mailbox;
 use lettre::message::MultiPart;
+use lettre::message::header::HeaderName;
+use lettre::message::header::HeaderValue;
+use uuid::Uuid;
 
 #[derive(Debug, thiserror::Error)]
 pub enum MailError {
@@ -63,7 +66,16 @@ impl Mailer {
     }
 
     fn message(&self, email: Email) -> Result<Message, MailError> {
+        // lettre adds no Message-ID, and its default would name the host (a container id).
+        // Some relays don't add one either, and spam filters penalize its absence.
+        let message_id = format!("<{}@{}>", Uuid::new_v4(), self.from.email.domain());
         Ok(Message::builder()
+            .message_id(Some(message_id))
+            // RFC 3834: sent by a program, so out-of-office replies and other robots stay quiet.
+            .raw_header(HeaderValue::new(
+                HeaderName::new_from_ascii_str("Auto-Submitted"),
+                "auto-generated".to_owned(),
+            ))
             .from(self.from.clone())
             .to(email.to.parse()?)
             .subject(email.subject)
@@ -126,6 +138,10 @@ mod tests {
 
         assert!(raw.contains("From: bauth <no-reply@example.com>"), "{raw}");
         assert!(raw.contains("To: alice@example.com"), "{raw}");
+        assert!(raw.contains("Message-ID: <"), "{raw}");
+        assert!(raw.contains("@example.com>\r\n"), "{raw}");
+        assert!(raw.contains("Date: "), "{raw}");
+        assert!(raw.contains("Auto-Submitted: auto-generated\r\n"), "{raw}");
         assert!(raw.contains("multipart/alternative"), "{raw}");
         assert!(
             raw.contains("Content-Type: text/plain; charset=utf-8"),

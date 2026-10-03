@@ -1,15 +1,26 @@
-//! 6-digit codes sent with magic links, typed on the device that asked for the email.
+//! 6-digit codes sent by email: with magic links (typed on the device that asked for the email)
+//! and to confirm sensitive account changes.
 //!
-//! A code only has 10^6 values: it is only safe bound to its login flow, with few attempts.
-//! The database keeps an HMAC keyed by a secret derived from the master key, bound to the flow:
-//! a dump alone doesn't reveal the codes.
+//! A code only has 10^6 values: it is only safe bound to what it unlocks (a login flow, a
+//! session), with few attempts. The database keeps an HMAC keyed by a secret derived from the
+//! master key, one per purpose: a dump alone doesn't reveal the codes.
 
 use aws_lc_rs::hmac;
+use chrono::TimeDelta;
 use uuid::Uuid;
 
+use crate::errors::ApiError;
 use crate::master_key::MasterKey;
 
 const CODE_RANGE: u32 = 1_000_000;
+
+/// How long an emailed code (and its magic link) works.
+pub const CODE_TTL: TimeDelta = TimeDelta::minutes(15);
+/// Wrong codes on one email before it is consumed.
+pub const MAX_FAILURES_PER_CODE: i32 = 5;
+/// Wrong codes over a day on one address (magic links) or account (confirmations): new emails
+/// would otherwise keep adding guesses. Once reached, codes stop working for a day.
+pub const MAX_FAILURES_PER_DAY: i64 = 10;
 
 /// A code to email. Only `hash` is stored.
 pub struct MagicCode {
@@ -18,37 +29,61 @@ pub struct MagicCode {
     pub hash: Vec<u8>,
 }
 
-pub struct MagicCodeKey(hmac::Key);
+/// One key per purpose: a code emailed for one can't be replayed for the other.
+pub struct CodeKeys {
+    pub magic_link: CodeKey,
+    pub confirmation: CodeKey,
+}
 
-impl MagicCodeKey {
+impl CodeKeys {
     pub fn new(master_key: &MasterKey) -> Self {
+        Self {
+            magic_link: CodeKey::new(master_key, "magic_code"),
+            confirmation: CodeKey::new(master_key, "confirmation_code"),
+        }
+    }
+}
+
+pub struct CodeKey(hmac::Key);
+
+impl CodeKey {
+    fn new(master_key: &MasterKey, purpose: &str) -> Self {
         Self(hmac::Key::new(
             hmac::HMAC_SHA256,
-            &master_key.derive("magic_code"),
+            &master_key.derive(purpose),
         ))
     }
 
-    pub fn generate(&self, flow_id: Uuid) -> MagicCode {
+    /// A new code bound to `owner` (the login flow or the session it unlocks).
+    pub fn generate(&self, owner: Uuid) -> MagicCode {
         let plain = format!("{:06}", random_below(CODE_RANGE));
-        let hash = hmac::sign(&self.0, &message(flow_id, &plain))
+        let hash = hmac::sign(&self.0, &message(owner, &plain))
             .as_ref()
             .to_vec();
         MagicCode { plain, hash }
     }
 
-    /// Constant-time check of a code typed for `flow_id`.
-    pub fn verify(&self, flow_id: Uuid, code: &str, hash: &[u8]) -> bool {
-        hmac::verify(&self.0, &message(flow_id, code), hash).is_ok()
+    /// Constant-time check of a code typed for `owner`.
+    pub fn verify(&self, owner: Uuid, code: &str, hash: &[u8]) -> bool {
+        hmac::verify(&self.0, &message(owner, code), hash).is_ok()
     }
 }
 
-/// Exactly six ASCII digits.
-pub fn is_well_formed(code: &str) -> bool {
+/// Rejects anything but six ASCII digits, before any database work.
+pub fn check_format(code: &str) -> Result<(), ApiError> {
+    if is_well_formed(code) {
+        Ok(())
+    } else {
+        Err(ApiError::InvalidRequest("code must be 6 digits".into()))
+    }
+}
+
+fn is_well_formed(code: &str) -> bool {
     code.len() == 6 && code.bytes().all(|b| b.is_ascii_digit())
 }
 
-fn message(flow_id: Uuid, code: &str) -> Vec<u8> {
-    [flow_id.as_bytes().as_slice(), code.as_bytes()].concat()
+fn message(owner: Uuid, code: &str) -> Vec<u8> {
+    [owner.as_bytes().as_slice(), code.as_bytes()].concat()
 }
 
 /// Uniform in `0..range`: values past the last multiple of `range` are drawn again.
@@ -68,10 +103,14 @@ fn random_below(range: u32) -> u32 {
 mod tests {
     use super::*;
 
-    fn key() -> MagicCodeKey {
-        MagicCodeKey::new(
+    fn keys() -> CodeKeys {
+        CodeKeys::new(
             &MasterKey::from_base64("AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=").unwrap(),
         )
+    }
+
+    fn key() -> CodeKey {
+        keys().magic_link
     }
 
     #[test]
@@ -91,13 +130,14 @@ mod tests {
     }
 
     #[test]
-    fn hash_depends_on_the_master_key() {
+    fn hash_depends_on_the_master_key_and_the_purpose() {
         let flow_id = Uuid::now_v7();
         let code = key().generate(flow_id);
-        let other = MagicCodeKey::new(
+        let other = CodeKeys::new(
             &MasterKey::from_base64("HxwdHh8AAQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRo=").unwrap(),
         );
-        assert!(!other.verify(flow_id, &code.plain, &code.hash));
+        assert!(!other.magic_link.verify(flow_id, &code.plain, &code.hash));
+        assert!(!keys().confirmation.verify(flow_id, &code.plain, &code.hash));
     }
 
     #[test]
@@ -105,6 +145,7 @@ mod tests {
         assert!(is_well_formed("012345"));
         for code in ["12345", "1234567", "12 345", "١٢٣٤٥٦", "abcdef", ""] {
             assert!(!is_well_formed(code), "{code}");
+            assert!(check_format(code).is_err());
         }
     }
 

@@ -34,19 +34,17 @@ pub struct Client {
     pub name: String,
     /// Compared byte for byte with the `redirect_uri` sent by the app.
     pub redirect_uris: Vec<String>,
-    /// Lets `POST /registration` create accounts for this client. Off by default.
+    /// Lets a magic link email create the account of an unknown address. Off by default.
     #[serde(default)]
     pub allow_signup: bool,
     /// API that accepts this client's access tokens (`aud` claim). Defaults to the client id.
     pub audience: Option<String>,
-    /// App page that receives `#token=…` to choose a new password. Enables password reset.
-    pub password_reset_url: Option<String>,
-    /// App page that receives `#token=…` to finish a magic link login. Enables magic links.
-    pub magic_link_url: Option<String>,
-    /// App page that receives `#token=…` to confirm an email address and sends it to
-    /// `POST /verification/confirm`: registration with a password, verification resend, and the
-    /// new address of an email change. Required by those three routes.
-    pub verification_url: Option<String>,
+    /// App page that receives `#token=…` to finish a magic link login. Required: the magic link
+    /// (and its code) is the only way to log in.
+    pub magic_link_url: String,
+    /// App page that receives `#token=…` from the confirmation link sent to the new address of an
+    /// email change, and sends it to `POST /email-change/confirm`. Required by `POST /me/email`.
+    pub email_change_url: Option<String>,
     /// Browser origins allowed to call bauth (CORS), on top of the origins of the http(s) URLs above.
     /// For apps whose origin appears in no URL, like Tauri: `tauri://localhost`, `http://tauri.localhost`.
     #[serde(default)]
@@ -90,9 +88,8 @@ impl Client {
         self.redirect_uris
             .iter()
             .map(String::as_str)
-            .chain(self.password_reset_url.as_deref())
-            .chain(self.magic_link_url.as_deref())
-            .chain(self.verification_url.as_deref())
+            .chain([self.magic_link_url.as_str()])
+            .chain(self.email_change_url.as_deref())
             .filter_map(|url| Url::parse(url).ok())
             .filter(|url| matches!(url.scheme(), "http" | "https"))
             .filter_map(|url| origin_of(&url))
@@ -135,14 +132,9 @@ impl Client {
             check_url("redirect_uri", uri).map_err(invalid)?;
         }
 
-        if let Some(url) = &self.password_reset_url {
-            check_url("password_reset_url", url).map_err(invalid)?;
-        }
-        if let Some(url) = &self.magic_link_url {
-            check_url("magic_link_url", url).map_err(invalid)?;
-        }
-        if let Some(url) = &self.verification_url {
-            check_url("verification_url", url).map_err(invalid)?;
+        check_url("magic_link_url", &self.magic_link_url).map_err(invalid)?;
+        if let Some(url) = &self.email_change_url {
+            check_url("email_change_url", url).map_err(invalid)?;
         }
         for origin in &self.allowed_origins {
             // Compared byte for byte with the browser's `Origin` header.
@@ -211,6 +203,7 @@ mod tests {
         id = "my-app"
         name = "My App"
         redirect_uris = ["http://localhost:5173/auth/callback", "https://app.example.com/auth/callback"]
+        magic_link_url = "https://app.example.com/auth/magic-link"
         allow_signup = true
     "#;
 
@@ -242,7 +235,9 @@ mod tests {
         assert!(!client.allows_redirect_uri("com.example.app:/auth/callback/"));
 
         let base = |uri: &str| {
-            format!("[[clients]]\nid = \"app\"\nname = \"App\"\nredirect_uris = [\"{uri}\"]")
+            format!(
+                "[[clients]]\nid = \"app\"\nname = \"App\"\nmagic_link_url = \"https://a.fr/magic\"\nredirect_uris = [\"{uri}\"]"
+            )
         };
         for uri in [
             "javascript:alert(1)",
@@ -264,13 +259,13 @@ mod tests {
             name = "My App"
             redirect_uris = ["http://localhost:8025/auth/callback", "https://app.example.com/auth/callback"]
             magic_link_url = "https://app.example.com/auth/magic-link"
-            password_reset_url = "https://www.example.com:8443/reset"
-            verification_url = "https://verify.example.com/email"
+            email_change_url = "https://www.example.com:8443/email-change"
 
             [[clients]]
             id = "my-app-mobile"
             name = "My App"
             redirect_uris = ["com.example.app:/auth/callback"]
+            magic_link_url = "com.example.app:/auth/magic-link"
             allowed_origins = ["tauri://localhost", "http://tauri.localhost"]
         "#;
         let origins: Vec<_> = Clients::from_toml(toml)
@@ -284,7 +279,6 @@ mod tests {
                 "http://localhost:8025",
                 "http://tauri.localhost",
                 "https://app.example.com",
-                "https://verify.example.com",
                 "https://www.example.com:8443",
                 "tauri://localhost",
             ]
@@ -295,7 +289,7 @@ mod tests {
     fn rejects_allowed_origins_that_are_not_origins() {
         let base = |origin: &str| {
             format!(
-                "[[clients]]\nid = \"app\"\nname = \"App\"\nredirect_uris = [\"https://a.fr/cb\"]\nallowed_origins = [\"{origin}\"]"
+                "[[clients]]\nid = \"app\"\nname = \"App\"\nmagic_link_url = \"https://a.fr/magic\"\nredirect_uris = [\"https://a.fr/cb\"]\nallowed_origins = [\"{origin}\"]"
             )
         };
         for origin in ["https://a.fr/", "https://a.fr/path", "a.fr", "*"] {
@@ -323,7 +317,9 @@ mod tests {
 
     #[test]
     fn rejects_invalid_config() {
-        let base = |extra: &str| format!("[[clients]]\nid = \"app\"\nname = \"App\"\n{extra}");
+        let named = |extra: &str| format!("[[clients]]\nid = \"app\"\nname = \"App\"\n{extra}");
+        let base =
+            |extra: &str| named(&format!("magic_link_url = \"https://a.fr/magic\"\n{extra}"));
         assert!(error_of(&base("redirect_uris = []")).contains("at least one"));
         assert!(error_of(&base(r#"redirect_uris = ["http://example.com/cb"]"#)).contains("https"));
         assert!(
@@ -341,7 +337,7 @@ mod tests {
         );
         assert!(
             error_of(
-                "[[clients]]\nid = \"Bad Id\"\nname = \"x\"\nredirect_uris = [\"https://a.fr/cb\"]"
+                "[[clients]]\nid = \"Bad Id\"\nname = \"x\"\nmagic_link_url = \"https://a.fr/magic\"\nredirect_uris = [\"https://a.fr/cb\"]"
             )
             .contains("id must match")
         );
@@ -349,10 +345,15 @@ mod tests {
         assert!(error_of(&dup).contains("duplicate id"));
 
         assert!(
-            error_of(&base(
-                "redirect_uris = [\"https://a.fr/cb\"]\npassword_reset_url = \"http://a.fr/reset\""
+            error_of(&named(
+                "redirect_uris = [\"https://a.fr/cb\"]\nmagic_link_url = \"http://a.fr/magic\""
             ))
-            .contains("password_reset_url")
+            .contains("magic_link_url")
+        );
+        // Without it, the client would have no way to log in.
+        assert!(
+            error_of(&named("redirect_uris = [\"https://a.fr/cb\"]"))
+                .contains("missing field `magic_link_url`")
         );
     }
 }

@@ -27,22 +27,12 @@ const bauth = createBauthClient({
 })
 ```
 
-### Password
+### Login and sign-up: magic link and 6-digit code
 
-```ts
-try {
-  const tokens = await bauth.loginWithPassword(email, password)
-} catch (error) {
-  if (error instanceof BauthError && error.code === "email_not_verified") await bauth.resendVerification(email)
-}
-```
-
-### Magic link and 6-digit code
-
-One email carries both a link and a code. The code is typed on the screen that asked for the email
-(mobile mail apps often open links in another browser); the link works when opened on the same device.
-It is also the passwordless sign-up: for an unknown address (and a client with `allow_signup`), the
-account is created, email verified, when the code or link is used. No second email.
+bauth has no passwords: users log in with an email that carries both a link and a code. The code is
+typed on the screen that asked for the email (mobile mail apps often open links in another browser);
+the link works when opened on the same device. It is also the sign-up: for an unknown address (and a
+client with `allow_signup`), the account is created, email verified, when the code or link is used.
 
 ```ts
 // Where the login in progress lives between the two screens (localStorage, a cookie…).
@@ -96,9 +86,8 @@ the token to forward. `createAuthMiddleware` is the middleware alone, for your o
 
 ### Errors
 
-Every failure is a `BauthError` with a stable `code` to translate (`invalid_credentials`,
-`invalid_code`, `flow_expired`, `rate_limited` with `retryAfter`…). The codes of each route are listed
-in bauth's [`openapi.json`](https://github.com/Wadjetz/bauth/blob/master/bauth_server/openapi.json).
+Every failure is a `BauthError` with a stable `code` to translate (`invalid_code`, `flow_expired`, `rate_limited` with `retryAfter`…). The codes of each route are listed
+in bauth's [`openapi.json`](https://github.com/Wadjetz/bauth/blob/main/bauth_server/openapi.json).
 Anything not wrapped is reachable through the typed `bauth.api` (openapi-fetch) client.
 
 ## Development
@@ -109,4 +98,4 @@ npm run generate   # after bauth_server/openapi.json changes
 npm test           # builds, then runs test/*.test.js
 ```
 
-Releasing: bump `version` in `package.json`, then publish a GitHub release tagged `sdk-v<version>`.
+Releasing: published by hand with `npm publish`, see [Releasing the SDK](https://github.com/Wadjetz/bauth#releasing-the-sdk).

@@ -2,7 +2,6 @@
 id = "my-app"
 name = "My App"
 redirect_uris = ["http://localhost:8025/auth/callback"]
-password_reset_url = "http://localhost:8025/auth/reset-password"
 magic_link_url = "http://localhost:8025/auth/magic-link"
-verification_url = "http://localhost:8025/auth/verify-email"
+email_change_url = "http://localhost:8025/auth/email-change"
 allow_signup = true

@@ -35,7 +35,7 @@ use crate::app;
 use crate::clients::Clients;
 use crate::config::ServerConfig;
 use crate::db::DbPool;
-use crate::magic_code::MagicCodeKey;
+use crate::magic_code::CodeKeys;
 use crate::mailer::Email;
 use crate::mailer::Mailer;
 use crate::master_key::MasterKey;
@@ -50,7 +50,11 @@ pub const APP_ORIGIN: &str = "http://localhost:8025";
 /// RFC 7636 appendix B.
 pub const CODE_VERIFIER: &str = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
 pub const CODE_CHALLENGE: &str = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
-pub const PASSWORD: &str = "correct horse battery";
+
+/// Any 6-digit code but `code`.
+pub fn wrong_code(code: &str) -> String {
+    format!("{:06}", (code.parse::<u32>().unwrap() + 1) % 1_000_000)
+}
 
 const CLIENTS: &str = r#"
 [[clients]]
@@ -58,9 +62,8 @@ id = "my-app"
 name = "My App"
 redirect_uris = ["http://localhost:8025/auth/callback"]
 allow_signup = true
-password_reset_url = "http://localhost:8025/auth/reset-password"
 magic_link_url = "http://localhost:8025/auth/magic-link"
-verification_url = "http://localhost:8025/auth/verify-email"
+email_change_url = "http://localhost:8025/auth/email-change"
 
 [[clients]]
 id = "closed"
@@ -189,7 +192,7 @@ impl TestApp {
             clients: Arc::new(Clients::from_toml(CLIENTS).unwrap()),
             signing_keys: keys.clone(),
             rate_limits: Arc::new(RateLimits::new(trusted_proxies)),
-            magic_code_key: Arc::new(MagicCodeKey::new(&master_key)),
+            code_keys: Arc::new(CodeKeys::new(&master_key)),
         };
         Self {
             db,
@@ -271,21 +274,21 @@ impl TestApp {
 
     // Flows
 
-    pub async fn register(&self, email: &str) -> TestResponse {
-        self.post("/registration")
-            .json(json!({ "client_id": CLIENT_ID, "email": email, "password": PASSWORD }))
-            .send()
-            .await
+    /// An account that already exists, verified, without going through a login (no session,
+    /// no email). Returns its id.
+    pub async fn create_account(&self, email: &str) -> uuid::Uuid {
+        sqlx::query_scalar(
+            "INSERT INTO bauth.users (email, email_verified_at) VALUES (lower(btrim($1)), now()) RETURNING id",
+        )
+        .bind(email)
+        .fetch_one(&self.db)
+        .await
+        .unwrap()
     }
 
-    pub async fn register_verified(&self, email: &str) {
-        assert_eq!(self.register(email).await.status, StatusCode::ACCEPTED);
-        let confirm = self.confirm_verification(&self.last_token(email)).await;
-        assert_eq!(confirm.status, StatusCode::NO_CONTENT);
-    }
-
-    pub async fn confirm_verification(&self, token: &str) -> TestResponse {
-        self.post("/verification/confirm")
+    /// Confirms an email change from the token of its link.
+    pub async fn confirm_email_change(&self, token: &str) -> TestResponse {
+        self.post("/email-change/confirm")
             .json(json!({ "token": token }))
             .send()
             .await
@@ -308,18 +311,6 @@ impl TestApp {
             .await;
         assert_eq!(flow.status, StatusCode::CREATED, "{}", flow.body);
         flow.str("flow_id")
-    }
-
-    pub async fn submit_password(
-        &self,
-        flow_id: &str,
-        email: &str,
-        password: &str,
-    ) -> TestResponse {
-        self.post(&format!("/flows/login/{flow_id}/password"))
-            .json(json!({ "email": email, "password": password }))
-            .send()
-            .await
     }
 
     pub async fn request_magic_link(&self, flow_id: &str, email: &str) -> TestResponse {
@@ -354,22 +345,9 @@ impl TestApp {
             .await
     }
 
-    pub async fn login(&self, email: &str, password: &str) -> Tokens {
-        let flow_id = self.start_flow().await;
-        let login = self.submit_password(&flow_id, email, password).await;
-        assert_eq!(login.status, StatusCode::OK, "{}", login.body);
-        let tokens = self
-            .exchange(&login.str("code"), CODE_VERIFIER, REDIRECT_URI)
-            .await;
-        assert_eq!(tokens.status, StatusCode::OK, "{}", tokens.body);
-        Tokens {
-            access: tokens.str("access_token"),
-            refresh: tokens.str("refresh_token"),
-        }
-    }
-
-    /// Signs up (or logs in) with the magic code, like an account that has no password.
-    pub async fn login_with_code(&self, email: &str) -> Tokens {
+    /// Logs in (signing up if needed) with the magic code: request the email, type the code,
+    /// exchange the authorization code.
+    pub async fn login(&self, email: &str) -> Tokens {
         let flow_id = self.start_flow().await;
         self.request_magic_link(&flow_id, email).await;
         let login = self

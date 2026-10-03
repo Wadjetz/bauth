@@ -5,7 +5,7 @@ info:
 
 http:
   method: POST
-  url: "{{host}}/verification/confirm"
+  url: "{{host}}/email-change/confirm"
   body:
     type: json
     data: |-

@@ -8,7 +8,7 @@ use serde::Serialize;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use super::verification;
+use super::email_change;
 use crate::AppState;
 use crate::current_user::CurrentUser;
 use crate::email;
@@ -17,25 +17,18 @@ use crate::errors::ApiError;
 use crate::errors::AppJson;
 use crate::errors::AppPath;
 use crate::magic_code;
-use crate::password;
 use crate::queries;
 use crate::rate_limit::ClientIp;
 use crate::rate_limit::{self};
 use crate::token;
 
 const EMAIL_CHANGE_TTL: TimeDelta = TimeDelta::hours(1);
-const CONFIRMATION_TTL: TimeDelta = TimeDelta::minutes(15);
-/// Wrong codes on one confirmation email before it is consumed.
-const MAX_CODE_FAILURES: i32 = 5;
-/// Wrong codes on one account over a day: a code is only 10^6 values.
-const MAX_CODE_FAILURES_PER_USER: i64 = 10;
 
 #[derive(Serialize, ToSchema)]
 pub struct MeResponse {
     id: Uuid,
     email: String,
     email_verified: bool,
-    has_password: bool,
     created_at: DateTime<Utc>,
 }
 
@@ -57,62 +50,12 @@ pub async fn get(
     let account = queries::users::find_by_id(&state.db, user.id)
         .await?
         .ok_or(ApiError::Unauthorized)?;
-    let has_password = queries::password_credentials::find_hash(&state.db, user.id)
-        .await?
-        .is_some();
     Ok(AppJson(MeResponse {
         id: account.id,
         email: account.email,
         email_verified: account.email_verified_at.is_some(),
-        has_password,
         created_at: account.created_at,
     }))
-}
-
-#[derive(Deserialize, ToSchema)]
-pub struct ChangePasswordRequest {
-    current_password: String,
-    new_password: String,
-}
-
-#[utoipa::path(
-    post,
-    path = "/me/password",
-    tag = "Me",
-    security(("bearer_auth" = [])),
-    request_body = ChangePasswordRequest,
-    responses(
-        (status = 204, description = "Password changed; other sessions revoked"),
-        (status = 400, description = "`invalid_request`, `password_too_short`, `password_too_long`, `password_not_set`, `invalid_credentials`", body = crate::errors::ErrorBody),
-        (status = 401, description = "`unauthorized`: refresh the access token", body = crate::errors::ErrorBody),
-        (status = 429, description = "`rate_limited`", body = crate::errors::ErrorBody),
-    )
-)]
-/// Changes the password, then logs out every other session of the user.
-pub async fn change_password(
-    State(state): State<AppState>,
-    client_ip: ClientIp,
-    user: CurrentUser,
-    AppJson(input): AppJson<ChangePasswordRequest>,
-) -> Result<StatusCode, ApiError> {
-    password::validate(&input.new_password)?;
-    // Accounts created by magic link have no password to check: they set one via password reset,
-    // which proves they own the email. A stolen access token alone must not set a password.
-    check_password(&state, &client_ip, &user, input.current_password).await?;
-    let new_hash = password::hash(input.new_password).await?;
-
-    let mut tx = state.db.begin().await?;
-    queries::password_credentials::upsert(&mut *tx, user.id, &new_hash).await?;
-    queries::password_resets::consume_all_for_user(&mut *tx, user.id).await?;
-    let revoked =
-        queries::sessions::revoke_all_for_user_except(&mut *tx, user.id, user.session_id).await?;
-    tx.commit().await?;
-
-    tracing::info!(user_id = %user.id, revoked_sessions = revoked, "password changed");
-    state
-        .mailer
-        .send_in_background(emails::password_changed(&user.email));
-    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(Serialize, ToSchema)]
@@ -186,7 +129,7 @@ pub async fn revoke_session(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// What a code confirms. An account with no password proves itself by email instead.
+/// What a code confirms: sensitive changes need proof of the mailbox, not just an access token.
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ConfirmationAction {
@@ -241,9 +184,9 @@ pub struct ConfirmationResponse {
         (status = 429, description = "`rate_limited`", body = crate::errors::ErrorBody),
     )
 )]
-/// Emails a 6-digit code confirming `action`, to send back as `code` on that route. It is the way
-/// accounts without a password (magic link only) confirm sensitive changes. The code only works
-/// for this action, from this session, for 5 wrong attempts; a new one disables the previous.
+/// Emails a 6-digit code confirming `action`, to send back as `code` on that route: a stolen
+/// access token alone can't change the email or delete the account. The code only works for this
+/// action, from this session, for 5 wrong attempts; a new one disables the previous.
 pub async fn request_confirmation(
     State(state): State<AppState>,
     client_ip: ClientIp,
@@ -256,7 +199,7 @@ pub async fn request_confirmation(
         .email_per_address
         .check(&rate_limit::email_key(&user.email))?;
 
-    let code = state.magic_code_key.generate(user.session_id);
+    let code = state.code_keys.confirmation.generate(user.session_id);
     queries::confirmations::create(
         &state.db,
         user.id,
@@ -264,7 +207,7 @@ pub async fn request_confirmation(
         input.action.as_str(),
         &user.email,
         &code.hash,
-        Utc::now() + CONFIRMATION_TTL,
+        Utc::now() + magic_code::CODE_TTL,
     )
     .await?;
     state.mailer.send_in_background(emails::confirmation_code(
@@ -280,25 +223,6 @@ pub async fn request_confirmation(
     Ok((StatusCode::ACCEPTED, AppJson(response)))
 }
 
-/// Re-authentication for sensitive changes: an access token alone isn't enough. The password, or
-/// a code emailed by `POST /me/confirmation` for accounts that have none.
-async fn confirm_sensitive(
-    state: &AppState,
-    client_ip: &ClientIp,
-    user: &CurrentUser,
-    action: ConfirmationAction,
-    password: Option<String>,
-    code: Option<String>,
-) -> Result<(), ApiError> {
-    match (code, password) {
-        (Some(code), _) => check_code(state, client_ip, user, action, &code).await,
-        (None, Some(password)) => check_password(state, client_ip, user, password).await,
-        (None, None) => Err(ApiError::InvalidRequest(
-            "password or code is required".into(),
-        )),
-    }
-}
-
 /// Spends one attempt on the newest code of this session for `action`, and consumes it if right.
 async fn check_code(
     state: &AppState,
@@ -308,9 +232,7 @@ async fn check_code(
     code: &str,
 ) -> Result<(), ApiError> {
     state.rate_limits.token_per_ip.check(&client_ip.key())?;
-    if !magic_code::is_well_formed(code) {
-        return Err(ApiError::InvalidRequest("code must be 6 digits".into()));
-    }
+    magic_code::check_format(code)?;
 
     let mut tx = state.db.begin().await?;
     let Some(confirmation) = queries::confirmations::find_code_candidate(
@@ -318,8 +240,8 @@ async fn check_code(
         user.id,
         user.session_id,
         action.as_str(),
-        MAX_CODE_FAILURES,
-        MAX_CODE_FAILURES_PER_USER,
+        magic_code::MAX_FAILURES_PER_CODE,
+        magic_code::MAX_FAILURES_PER_DAY,
     )
     .await?
     else {
@@ -330,13 +252,14 @@ async fn check_code(
         return Err(ApiError::InvalidCode);
     }
     if !state
-        .magic_code_key
+        .code_keys
+        .confirmation
         .verify(user.session_id, code, &confirmation.code_hash)
     {
         let failures = queries::confirmations::record_code_failure(
             &mut *tx,
             confirmation.id,
-            MAX_CODE_FAILURES,
+            magic_code::MAX_FAILURES_PER_CODE,
         )
         .await?;
         // The failure must be kept even though the request fails.
@@ -349,32 +272,10 @@ async fn check_code(
     Ok(())
 }
 
-async fn check_password(
-    state: &AppState,
-    client_ip: &ClientIp,
-    user: &CurrentUser,
-    password: String,
-) -> Result<(), ApiError> {
-    state.rate_limits.login_per_ip.check(&client_ip.key())?;
-    state
-        .rate_limits
-        .login_per_email
-        .check(&rate_limit::email_key(&user.email))?;
-    let Some(hash) = queries::password_credentials::find_hash(&state.db, user.id).await? else {
-        return Err(ApiError::PasswordNotSet);
-    };
-    if !password::verify(password, hash).await? {
-        return Err(ApiError::InvalidCredentials);
-    }
-    Ok(())
-}
-
 #[derive(Deserialize, ToSchema)]
 pub struct ChangeEmailRequest {
-    /// Current password, or `code` for an account that has none.
-    password: Option<String>,
     /// 6-digit code from `POST /me/confirmation` with `action: "change_email"`.
-    code: Option<String>,
+    code: String,
     new_email: String,
 }
 
@@ -397,14 +298,14 @@ pub struct ChangeEmailResponse {
     request_body = ChangeEmailRequest,
     responses(
         (status = 202, description = "Confirmation link sent to the new address, unless it is taken: the answer is the same, and a `code` is spent either way", body = ChangeEmailResponse),
-        (status = 400, description = "`invalid_request`, `invalid_email`, `password_not_set`, `invalid_credentials`, `invalid_code`", body = crate::errors::ErrorBody),
+        (status = 400, description = "`invalid_request`, `invalid_email`, `invalid_code`", body = crate::errors::ErrorBody),
         (status = 401, description = "`unauthorized`: refresh the access token", body = crate::errors::ErrorBody),
         (status = 429, description = "`rate_limited`", body = crate::errors::ErrorBody),
     )
 )]
 /// Sends a confirmation link to the new address. The account keeps its current address
-/// until the link is used, on `POST /verification/confirm`. Confirmed by the current password,
-/// or by a code from `POST /me/confirmation` when the account has none.
+/// until the link is used, on `POST /email-change/confirm`. Confirmed by a code from
+/// `POST /me/confirmation`.
 pub async fn change_email(
     State(state): State<AppState>,
     client_ip: ClientIp,
@@ -425,17 +326,16 @@ pub async fn change_email(
         .clients
         .get(&user.client_id)
         .ok_or(ApiError::InvalidClient)
-        .and_then(verification::page)?
+        .and_then(email_change::page)?
         .to_owned();
-    // Before the confirmation: a 429 must not spend the single-use code (or a password attempt).
+    // Before the confirmation: a 429 must not spend the single-use code.
     state.rate_limits.email_per_address.check(&new_email_key)?;
-    confirm_sensitive(
+    check_code(
         &state,
         &client_ip,
         &user,
         ConfirmationAction::ChangeEmail,
-        input.password,
-        input.code,
+        &input.code,
     )
     .await?;
 
@@ -472,10 +372,8 @@ pub async fn change_email(
 
 #[derive(Deserialize, ToSchema)]
 pub struct DeleteAccountRequest {
-    /// Current password, or `code` for an account that has none.
-    password: Option<String>,
     /// 6-digit code from `POST /me/confirmation` with `action: "delete_account"`.
-    code: Option<String>,
+    code: String,
 }
 
 #[utoipa::path(
@@ -486,12 +384,12 @@ pub struct DeleteAccountRequest {
     request_body = DeleteAccountRequest,
     responses(
         (status = 204, description = "Account deleted"),
-        (status = 400, description = "`invalid_request`, `password_not_set`, `invalid_credentials`, `invalid_code`", body = crate::errors::ErrorBody),
+        (status = 400, description = "`invalid_request`, `invalid_code`", body = crate::errors::ErrorBody),
         (status = 401, description = "`unauthorized`: refresh the access token", body = crate::errors::ErrorBody),
         (status = 429, description = "`rate_limited`", body = crate::errors::ErrorBody),
     )
 )]
-/// Deletes the account right away, with every session and credential.
+/// Deletes the account right away, with every session.
 /// Access tokens already given to APIs stay valid until they expire (15 min).
 pub async fn delete_account(
     State(state): State<AppState>,
@@ -499,13 +397,12 @@ pub async fn delete_account(
     user: CurrentUser,
     AppJson(input): AppJson<DeleteAccountRequest>,
 ) -> Result<StatusCode, ApiError> {
-    confirm_sensitive(
+    check_code(
         &state,
         &client_ip,
         &user,
         ConfirmationAction::DeleteAccount,
-        input.password,
-        input.code,
+        &input.code,
     )
     .await?;
     queries::users::delete(&state.db, user.id).await?;

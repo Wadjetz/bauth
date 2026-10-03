@@ -1,7 +1,7 @@
 /// RFC 5321 limit for a full address.
 const MAX_LEN: usize = 254;
 
-/// Minimal sanity check; the verification email is the real proof the address works.
+/// Minimal sanity check; the magic link email is the real proof the address works.
 /// Surrounding spaces are allowed because SQL `btrim` removes them before storage.
 pub fn is_valid(email: &str) -> bool {
     let email = email.trim_matches(' ');

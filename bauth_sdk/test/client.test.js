@@ -31,7 +31,7 @@ test("PKCE matches RFC 7636 appendix B", async () => {
 
 test("startLogin sends an S256 challenge and keeps the verifier", async () => {
   const { fetch, requests } = fakeFetch(
-    json(201, { flow_id: "f1", methods: ["password", "magic_link"], expires_at: "2026-01-01T00:00:00Z" })
+    json(201, { flow_id: "f1", methods: ["magic_link"], expires_at: "2026-01-01T00:00:00Z" })
   )
   const flow = await createBauthClient({ ...options, fetch }).startLogin("xyz")
   const sent = JSON.parse(requests[0].body)
@@ -39,7 +39,7 @@ test("startLogin sends an S256 challenge and keeps the verifier", async () => {
   assert.equal(sent.code_challenge_method, "S256")
   assert.equal(sent.code_challenge, await computeCodeChallenge(flow.codeVerifier))
   assert.deepEqual([sent.client_id, sent.redirect_uri, sent.state], ["my-app", "https://app.test/cb", "xyz"])
-  assert.deepEqual(flow.methods, ["password", "magic_link"])
+  assert.deepEqual(flow.methods, ["magic_link"])
 })
 
 test("token endpoints are form-encoded, without empty fields", async () => {
@@ -58,17 +58,17 @@ test("token endpoints are form-encoded, without empty fields", async () => {
 
 test("errors become BauthError with the stable code", async () => {
   const { fetch } = fakeFetch(
-    json(400, { code: "invalid_credentials", message: "email or password is incorrect" }),
+    json(400, { code: "invalid_code", message: "code is incorrect, expired or already used" }),
     json(429, { code: "rate_limited", message: "too many attempts" }, { "Retry-After": "42" }),
     json(400, { error: "invalid_grant", error_description: "code is invalid" })
   )
   const client = createBauthClient({ ...options, fetch })
 
-  const credentials = await client.submitPassword("f1", "a@b.c", "wrong").catch(e => e)
-  assert.ok(credentials instanceof BauthError)
-  assert.deepEqual([credentials.status, credentials.code], [400, "invalid_credentials"])
+  const wrongCode = await client.confirmMagicCode("f1", "000000").catch(e => e)
+  assert.ok(wrongCode instanceof BauthError)
+  assert.deepEqual([wrongCode.status, wrongCode.code], [400, "invalid_code"])
 
-  const limited = await client.register("a@b.c", "long enough password").catch(e => e)
+  const limited = await client.requestMagicLink("f1", "a@b.c").catch(e => e)
   assert.deepEqual([limited.code, limited.retryAfter], ["rate_limited", 42])
 
   const grant = await client.exchangeCode("c", "v").catch(e => e)
@@ -84,11 +84,11 @@ test("account routes send the bearer token; 204 resolves", async () => {
   assert.deepEqual([requests[1].method, requests[1].url], ["DELETE", "https://auth.test/me/sessions/s1"])
 })
 
-test("sensitive changes send the password or the code", async () => {
+test("sensitive changes send the emailed code", async () => {
   const { fetch, requests } = fakeFetch(json(202, { status: "confirmation_sent" }), new Response(null, { status: 204 }))
   const client = createBauthClient({ ...options, fetch })
   await client.requestConfirmation("at", "delete_account")
-  await client.deleteAccount("at", { code: "042917" })
+  await client.deleteAccount("at", "042917")
   assert.deepEqual(JSON.parse(requests[0].body), { action: "delete_account" })
   assert.deepEqual([requests[1].method, JSON.parse(requests[1].body)], ["DELETE", { code: "042917" }])
 })

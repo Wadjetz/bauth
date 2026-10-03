@@ -39,44 +39,6 @@ where
     .await
 }
 
-/// `find_by_id`, locking the account until the transaction ends.
-pub async fn lock_by_id<'e, E>(executor: E, id: Uuid) -> Result<Option<User>, sqlx::Error>
-where
-    E: Executor<'e, Database = Db>,
-{
-    sqlx::query_as!(
-        User,
-        r#"
-        SELECT id, email, email_verified_at, disabled_at, created_at
-        FROM bauth.users
-        WHERE id = $1
-        FOR NO KEY UPDATE
-        "#,
-        id
-    )
-    .fetch_optional(executor)
-    .await
-}
-
-/// `find_by_email`, locking the account until the transaction ends.
-pub async fn lock_by_email<'e, E>(executor: E, email: &str) -> Result<Option<User>, sqlx::Error>
-where
-    E: Executor<'e, Database = Db>,
-{
-    sqlx::query_as!(
-        User,
-        r#"
-        SELECT id, email, email_verified_at, disabled_at, created_at
-        FROM bauth.users
-        WHERE email = lower(btrim($1))
-        FOR NO KEY UPDATE
-        "#,
-        email
-    )
-    .fetch_optional(executor)
-    .await
-}
-
 pub async fn find_by_id<'e, E>(executor: E, id: Uuid) -> Result<Option<User>, sqlx::Error>
 where
     E: Executor<'e, Database = Db>,
@@ -94,17 +56,16 @@ where
     .await
 }
 
-/// Marks `email` as verified, only if it is still the user's current address.
-/// Idempotent: returns `true` even if it was already verified.
+/// Marks `email` as verified, only if it is still the user's current address. Idempotent.
 pub async fn mark_email_verified<'e, E>(
     executor: E,
     id: Uuid,
     email: &str,
-) -> Result<bool, sqlx::Error>
+) -> Result<(), sqlx::Error>
 where
     E: Executor<'e, Database = Db>,
 {
-    let result = sqlx::query!(
+    sqlx::query!(
         r#"
         UPDATE bauth.users
         SET email_verified_at = COALESCE(email_verified_at, now()), updated_at = now()
@@ -115,7 +76,7 @@ where
     )
     .execute(executor)
     .await?;
-    Ok(result.rows_affected() == 1)
+    Ok(())
 }
 
 /// Moves the account to a new, now verified, address, only if it still uses `from_email`.
@@ -144,7 +105,7 @@ where
     Ok(result.rows_affected() == 1)
 }
 
-/// Deletes the account; every credential, token and session goes with it (ON DELETE CASCADE).
+/// Deletes the account; its sessions, tokens and pending emails go with it (ON DELETE CASCADE).
 pub async fn delete<'e, E>(executor: E, id: Uuid) -> Result<(), sqlx::Error>
 where
     E: Executor<'e, Database = Db>,

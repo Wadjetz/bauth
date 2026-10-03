@@ -1,0 +1,25 @@
+info:
+  name: /me/confirmation
+  type: http
+  seq: 4
+
+http:
+  method: POST
+  url: "{{host}}/me/confirmation"
+  body:
+    type: json
+    data: |-
+      {
+        "action": "change_email"
+      }
+  auth: inherit
+
+docs: |-
+  Emails a 6-digit code: put it in the `confirmation_code` variable for `/me/email` ("change_email")
+  or `DELETE /me` ("delete_account").
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

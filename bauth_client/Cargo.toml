@@ -11,7 +11,6 @@ axum = ["dep:axum", "dep:serde_json"]
 # `testing::FakeBauth`: a bauth issuer for the tests of an API (JWKS, `/me`, signed tokens).
 test-support = [
   "axum",
-  "dep:serde_json",
   "dep:aws-lc-rs",
   "dep:base64",
   "dep:getrandom",
