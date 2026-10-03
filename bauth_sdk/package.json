@@ -1,6 +1,6 @@
 {
   "name": "@wadjetz/bauth-client",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Framework-agnostic client for the bauth authentication server",
   "keywords": [
     "bauth",
