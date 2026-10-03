@@ -142,9 +142,11 @@ several queries take `&mut DbConnection`). The rest of the tree is what `ls` sho
 ## Deployment
 - `Dockerfile`: cargo-chef, `rust:1.98-slim-trixie` → `debian:trixie-slim`, non-root, port 8401,
   `BAUTH_CONFIG=/etc/bauth/bauth.toml` (mount it). Migrations run at startup.
-- `release.yml` (on GitHub release): check then push `ghcr.io/wadjetz/bauth:{latest,sha}`.
-- `@wadjetz/bauth-client` is published by hand (`npm publish`, see README "Releasing the SDK"): bump it
-  with any server API change (the passwordless API is `0.3.0`).
+- `release.yml` (on push to `main`): when the workspace version has no `v<version>` tag, checks, pushes
+  `ghcr.io/wadjetz/bauth:{version,major.minor,latest,sha}`, publishes `@wadjetz/bauth-client` (npm
+  trusted publishing, skipped if already published), then creates the tag and GitHub release.
+  Server and SDK share one version (the workflow fails if `Cargo.toml` and `package.json` differ):
+  bump both with any server API change (README "Releasing"; the passwordless API is `0.3.0`).
 - Meant to run behind a reverse proxy (TLS, `X-Forwarded-For` from `BAUTH_TRUSTED_PROXIES`).
 
 ## Audit findings (2026-09-15, full read of `bauth_server`, `bauth_client`, migrations)

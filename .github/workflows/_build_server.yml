@@ -2,7 +2,11 @@ name: _build_server()
 
 on:
   workflow_call:
-  workflow_dispatch:
+    inputs:
+      version:
+        description: Version of the image (workspace version, without `v`)
+        required: true
+        type: string
 
 jobs:
   build:
@@ -24,6 +28,18 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # 0.3.0 → tags `0.3.0`, `0.3`, `latest` and the commit sha, plus OCI labels (version, revision…).
+      - name: Image tags and labels
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/wadjetz/bauth
+          tags: |
+            type=semver,pattern={{version}},value=${{ inputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ inputs.version }}
+            type=raw,value=latest
+            type=sha,format=long,prefix=
+
       - name: Build Docker image with cache
         uses: docker/build-push-action@v7
         with:
@@ -32,6 +48,5 @@ jobs:
           push: true
           cache-from: type=registry,ref=ghcr.io/wadjetz/bauth:cache
           cache-to: type=registry,ref=ghcr.io/wadjetz/bauth:cache,mode=max
-          tags: |
-            ghcr.io/wadjetz/bauth:latest
-            ghcr.io/wadjetz/bauth:${{ github.sha }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

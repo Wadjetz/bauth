@@ -1,16 +1,114 @@
 name: Release all
 
+# A release is a version bump merged into main: when the workspace version (Cargo.toml) has no
+# `v<version>` tag yet, check everything, push the Docker image, publish the SDK, then tag and create
+# the GitHub release. Any other push to main does nothing here. Re-run it by hand if a step failed:
+# each step is skipped once done (npm version already published, tag already there).
+
 on:
-  release:
-    types: [published]
+  push:
+    branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
+  version:
+    name: version
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      release: ${{ steps.version.outputs.release }}
+    steps:
+      - uses: actions/checkout@v6
+      - id: version
+        run: |
+          version=$(cargo metadata --no-deps --format-version 1 \
+            | jq -r '.packages[] | select(.name == "bauth_server") | .version')
+          sdk=$(jq -r .version bauth_sdk/package.json)
+          if [ "$version" != "$sdk" ]; then
+            echo "::error::Cargo.toml is $version but bauth_sdk/package.json is $sdk: bump both"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if git ls-remote --exit-code --tags origin "refs/tags/v$version" > /dev/null; then
+            echo "v$version is already released"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Releasing v$version"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
   check_server:
+    needs: version
+    if: needs.version.outputs.release == 'true'
     uses: ./.github/workflows/_check_server.yml
+  check_sdk:
+    needs: version
+    if: needs.version.outputs.release == 'true'
+    uses: ./.github/workflows/_check_sdk.yml
+
   build_server:
+    needs: [version, check_server, check_sdk]
     uses: ./.github/workflows/_build_server.yml
-    needs: check_server
+    with:
+      version: ${{ needs.version.outputs.version }}
     permissions:
       contents: read
       packages: write
+
+  # npm trusted publishing (OIDC): no token, provenance attached. Needs the trusted publisher set up
+  # once on npmjs.com (package settings → repository Wadjetz/bauth, workflow `release.yml`).
+  publish_sdk:
+    name: publish SDK
+    needs: [version, check_server, check_sdk]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: bauth_sdk
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "26"
+          registry-url: "https://registry.npmjs.org"
+          cache: "npm"
+          cache-dependency-path: bauth_sdk/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Publish
+        run: |
+          if npm view "@wadjetz/bauth-client@$VERSION" version > /dev/null 2>&1; then
+            echo "@wadjetz/bauth-client@$VERSION is already published"
+          else
+            npm publish
+          fi
+
+  github_release:
+    name: GitHub release
+    needs: [version, build_server, publish_sdk]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - name: Tag and release
+        run: |
+          gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "$VERSION" --generate-notes
