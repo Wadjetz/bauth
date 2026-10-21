@@ -55,10 +55,7 @@ version, telling how compatible the API is (the SDK types come from `openapi.jso
 fixes, `minor` for additions — and, while in `0.x`, for breaking changes too.
 
 ```sh
-# set the new version in Cargo.toml ([workspace.package]), then:
-cd bauth_sdk && npm version 0.4.0 --no-git-tag-version && cd ..   # package.json and package-lock.json
-UPDATE_OPENAPI=1 SQLX_OFFLINE=true cargo test -p bauth_server openapi   # Cargo.lock, openapi.json
-cd bauth_sdk && npm run generate && npm test
+./bump_version.sh minor   # or patch / major: Cargo.toml, Cargo.lock, package.json, openapi.json, SDK types
 ```
 
 Once it is on `main`, `release.yml` sees that `v<version>` has no tag yet: it runs the checks, pushes

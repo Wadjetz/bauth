@@ -34,6 +34,7 @@ use crate::AuthUser;
 use crate::MeError;
 use crate::Verifier;
 use crate::VerifyError;
+use crate::WrongClient;
 
 /// Why `AuthUser` couldn't be extracted. Answers like bauth: `{ "code", "message" }`.
 #[derive(Debug, thiserror::Error)]
@@ -79,12 +80,19 @@ impl IntoResponse for MeError {
     }
 }
 
+/// `AuthUser::require_client` in a handler: 403, since refreshing the token won't change its client.
+impl IntoResponse for WrongClient {
+    fn into_response(self) -> Response {
+        error_response((StatusCode::FORBIDDEN, "forbidden"), &self)
+    }
+}
+
 /// `{ "code", "message" }` like bauth; a 401 also says so in `WWW-Authenticate`.
 fn error_response(
     (status, code): (StatusCode, &'static str),
     error: &dyn std::error::Error,
 ) -> Response {
-    if status != StatusCode::UNAUTHORIZED {
+    if status.is_server_error() {
         tracing::error!(%error, "cannot authenticate request");
     }
     let body = Json(serde_json::json!({ "code": code, "message": error.to_string() }));

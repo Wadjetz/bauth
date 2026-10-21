@@ -180,6 +180,13 @@ mod axum_extractor {
                 }),
             )
             .route(
+                "/admin",
+                get(|user: AuthUser| async move {
+                    user.require_client(&["admin-app"])?;
+                    Ok::<_, bauth_client::WrongClient>("admin")
+                }),
+            )
+            .route(
                 "/email",
                 get(
                     |Extension(verifier): Extension<Verifier>, user: AuthUser| async move {
@@ -212,6 +219,27 @@ mod axum_extractor {
 
         let (status, _, _) = call(app.clone(), "/required", Some(format!("Basic {valid}"))).await;
         assert_eq!(status, StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn require_client_answers_403_to_other_apps() {
+        let bauth = FakeBauth::start();
+        let app = app(Some(bauth.verifier("my-app")));
+        let claims = bauth.claims(Uuid::now_v7(), "my-app");
+
+        let public = bauth.sign(&claims); // client `test-client`
+        let (status, www, body) =
+            call(app.clone(), "/admin", Some(format!("Bearer {public}"))).await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert_eq!(www, None, "refreshing won't help: no WWW-Authenticate");
+        assert!(body.contains("\"code\":\"forbidden\""), "{body}");
+
+        let admin = bauth.sign(&bauth_client::AccessTokenClaims {
+            client_id: "admin-app".into(),
+            ..claims
+        });
+        let (status, _, body) = call(app, "/admin", Some(format!("Bearer {admin}"))).await;
+        assert_eq!((status, body.as_str()), (StatusCode::OK, "admin"));
     }
 
     #[tokio::test]
