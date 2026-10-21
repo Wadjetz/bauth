@@ -210,3 +210,76 @@ test("the middleware reports a session it can't refresh", async () => {
   assert.equal(response.status, 401)
   assert.equal(unauthorized, 1)
 })
+
+test("submitMagicLink exchanges the link with the stored flow, then forgets it", async () => {
+  const { fetch, requests } = routedFetch(request =>
+    request.url.endsWith("/magic-link/confirm") ? json(200, { status: "completed", code: "c1" }) : json(200, tokens("a1", "r1"))
+  )
+  const bauth = createBauthClient({ ...options, fetch })
+  const store = memoryStore({ flowId: "f1", codeVerifier: "v1", email: "a@b.c", expiresAt: "2999-01-01T00:00:00Z" })
+
+  const result = await bauth.submitMagicLink("https://app.test/auth/magic-link#token=t1", store)
+  assert.equal(result.access_token, "a1")
+  assert.deepEqual(JSON.parse(requests[0].body), { token: "t1" })
+  assert.match(requests[1].body, /code=c1&.*code_verifier=v1/)
+  assert.equal(store.get(), undefined)
+})
+
+test("submitMagicLink leaves the link unused in a browser without the flow", async () => {
+  const { fetch, requests } = routedFetch(() => json(500, {}))
+  const bauth = createBauthClient({ ...options, fetch })
+
+  const elsewhere = await bauth.submitMagicLink("https://app.test/m#token=t1", memoryStore()).catch(e => e)
+  assert.equal(elsewhere.code, "flow_expired")
+  const noToken = await bauth.submitMagicLink("https://app.test/m", memoryStore()).catch(e => e)
+  assert.equal(noToken.code, "invalid_token")
+  assert.equal(requests.length, 0, "nothing sent: the code still works where the user started")
+})
+
+test("the session fetcher sends the token and replays once after a 401", async () => {
+  let accepted = "a1"
+  let unauthorized = 0
+  const sent = []
+  const api = async request => {
+    sent.push([request.headers.get("authorization"), await request.text()])
+    return request.headers.get("authorization") === `Bearer ${accepted}` ? json(200, {}) : json(401, {})
+  }
+  const { fetch: bauthFetch } = routedFetch(() => json(200, tokens("a2", "r2")))
+  const store = memoryStore({ accessToken: "a1", refreshToken: "r1", expiresAt: Date.now() + 600_000 })
+  const session = createSession({ bauth: createBauthClient({ ...options, fetch: bauthFetch }), store })
+  const fetch = session.fetcher({ fetch: api, onUnauthorized: () => unauthorized++ })
+
+  assert.equal((await fetch("https://api.test/items")).status, 200)
+  assert.deepEqual(sent.pop(), ["Bearer a1", ""])
+
+  // a1 revoked on the API side: refreshed, and the body sent again.
+  accepted = "a2"
+  const response = await fetch("https://api.test/items", { method: "POST", body: "n=1" })
+  assert.equal(response.status, 200)
+  assert.deepEqual(sent.slice(-2), [["Bearer a1", "n=1"], ["Bearer a2", "n=1"]])
+  assert.equal(store.get().refreshToken, "r2")
+  assert.equal(unauthorized, 0)
+})
+
+test("the session fetcher reports an ended session, not an unreachable bauth", async () => {
+  const api = async () => json(401, {})
+  let answer = () => json(503, {})
+  const { fetch: bauthFetch } = routedFetch(() => answer())
+  const store = memoryStore({ accessToken: "a1", refreshToken: "r1", expiresAt: Date.now() + 600_000 })
+  const session = createSession({ bauth: createBauthClient({ ...options, fetch: bauthFetch }), store })
+  let unauthorized = 0
+  const fetch = session.fetcher({ fetch: api, onUnauthorized: () => unauthorized++ })
+
+  assert.equal((await fetch("https://api.test/items")).status, 401)
+  assert.equal(unauthorized, 0, "bauth down: the session is kept")
+  assert.ok(store.get())
+
+  answer = () => json(400, { error: "invalid_grant" })
+  assert.equal((await fetch("https://api.test/items")).status, 401)
+  assert.equal(unauthorized, 1)
+  assert.equal(store.get(), undefined)
+
+  const anonymous = await fetch("https://api.test/public")
+  assert.equal(anonymous.status, 401, "no session: sent without Authorization")
+  assert.equal(unauthorized, 1)
+})

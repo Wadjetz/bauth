@@ -62,8 +62,8 @@ Protocol
 - Loopback redirect with any port (RFC 8252 §7.3) for desktop apps (audit item 11).
 
 SDK & DX
-- `@wadjetz/bauth-client`: token store abstraction (memory / `localStorage` / Tauri secure storage), single-
-  flight auto refresh with a `fetch` wrapper, PKCE + magic-link helpers wired end to end, typed errors.
+- *Done 2026-10-21: `@wadjetz/bauth-client` stores (`memoryStore`, `localStorageStore`, `keyValueStore`
+  for Tauri), `session.fetcher`, `submitMagicLink`, `BauthErrorCode` / `isBauthError`, `network_error`.*
 - `bauth_client`: `AuthUser::require_client(..)` / roles helpers once roles exist; a `mock` feature
   issuing test tokens without bauth.
 - A tiny reference app (Vite page for login / magic-link / email change) usable by every

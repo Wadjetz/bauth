@@ -18,7 +18,15 @@ The package version follows the SDK, not the server: use the SDK released alongs
 ## Usage
 
 ```ts
-import { BauthError, createBauthClient, createSession, type FlowStore, tokenFromUrl } from "@wadjetz/bauth-client"
+import {
+  createBauthClient,
+  createSession,
+  isBauthError,
+  keyValueStore,
+  localStorageStore,
+  type PendingMagicCode,
+  type StoredTokens
+} from "@wadjetz/bauth-client"
 
 const bauth = createBauthClient({
   baseUrl: "https://auth.example.com",
@@ -35,11 +43,8 @@ the link works when opened on the same device. It is also the sign-up: for an un
 client with `allow_signup`), the account is created, email verified, when the code or link is used.
 
 ```ts
-// Where the login in progress lives between the two screens (localStorage, a cookie…).
-const flows: FlowStore = {
-  read: () => JSON.parse(localStorage.getItem("bauth_flow") ?? "null") ?? undefined,
-  write: flow => (flow ? localStorage.setItem("bauth_flow", JSON.stringify(flow)) : localStorage.removeItem("bauth_flow"))
-}
+// Where the login in progress lives between the two screens, and until the link comes back.
+const flows = localStorageStore<PendingMagicCode>("bauth_flow")
 
 // Asking again for the same address continues the flow; a new one starts after 3 emails.
 await bauth.requestMagicCode(email, flows)
@@ -49,16 +54,18 @@ const tokens = await bauth.submitMagicCode(digits, flows)
 
 ```ts
 // Page the link opens (the link opens a new tab: that is why the flow is in localStorage)
-const saved = await flows.read()
-if (saved) {
-  const { codeVerifier } = saved
-  const code = await bauth.confirmMagicLink(tokenFromUrl(location.href)!)
-  const tokens = await bauth.exchangeCode(code, codeVerifier)
-} else {
-  // Another browser or device: don't confirm the link, it would also disable the code.
-  // Ask the user to type the code where they started.
+try {
+  const tokens = await bauth.submitMagicLink(location.href, flows)
+} catch (error) {
+  if (isBauthError(error, "flow_expired")) {
+    // Another browser or device: the link was left unused, since confirming it would also disable
+    // the code. Ask the user to type the code where they started.
+  }
 }
 ```
+
+`startLogin`, `requestMagicLink`, `confirmMagicLink`, `confirmMagicCode` and `exchangeCode` are the
+steps underneath, for a flow of your own.
 
 ### Session
 
@@ -67,17 +74,27 @@ expiry, one refresh for concurrent callers (replaying a rotated refresh token re
 and only `invalid_grant` ends the session — offline or bauth down keeps it.
 
 ```ts
-const session = createSession({
-  bauth,
-  store: {
-    read: () => JSON.parse(localStorage.getItem("bauth_tokens") ?? "null") ?? undefined,
-    write: tokens => (tokens ? localStorage.setItem("bauth_tokens", JSON.stringify(tokens)) : localStorage.removeItem("bauth_tokens"))
-  }
-})
+const session = createSession({ bauth, store: localStorageStore("bauth_tokens") })
 await session.save(tokens)
 
 // Your API client (openapi-fetch): bearer token, refresh, one replay after a 401.
 api.use(session.middleware({ onUnauthorized: () => goto("/login") }))
+// Or a plain fetch doing the same.
+const apiFetch = session.fetcher({ onUnauthorized: () => goto("/login") })
+await apiFetch("https://api.example.com/items")
+```
+
+Stores: `localStorageStore(key)` (shared by the tabs; readable by any script of the page, so prefer
+`httpOnly` cookies when a server is in front), `memoryStore()` (gone on reload), and
+`keyValueStore(key, storage)` over any string key/value storage, sync or async. In Tauri, the
+tokens belong in the OS keychain (a keychain or Stronghold plugin) rather than in the webview's
+`localStorage`; any storage with `get` / `set` / `delete` fits, e.g. `@tauri-apps/plugin-store`
+(not encrypted):
+
+```ts
+import { load } from "@tauri-apps/plugin-store"
+
+const store = keyValueStore<StoredTokens>("tokens", await load("auth.json"))
 ```
 
 On a server keeping tokens in `httpOnly` cookies, the store reads and writes the cookies of the
@@ -86,8 +103,11 @@ the token to forward. `createAuthMiddleware` is the middleware alone, for your o
 
 ### Errors
 
-Every failure is a `BauthError` with a stable `code` to translate (`invalid_code`, `flow_expired`, `rate_limited` with `retryAfter`…). The codes of each route are listed
-in bauth's [`openapi.json`](https://github.com/Wadjetz/bauth/blob/main/bauth_server/openapi.json).
+Every failure is a `BauthError` with a stable `code` to translate (`invalid_code`, `flow_expired`,
+`rate_limited` with `retryAfter`…), typed as `BauthErrorCode`; `isBauthError(error, ...codes)`
+narrows on them. bauth unreachable (offline, DNS, CORS) is `network_error`; an abort is rethrown as
+is. The codes of each route are listed in bauth's
+[`openapi.json`](https://github.com/Wadjetz/bauth/blob/main/bauth_server/openapi.json).
 Anything not wrapped is reachable through the typed `bauth.api` (openapi-fetch) client.
 
 ## Development

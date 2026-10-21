@@ -12,7 +12,7 @@ export {
 	type Tokens,
 	tokenFromUrl,
 } from "./client.js";
-export { BauthError } from "./errors.js";
+export { BauthError, type BauthErrorCode, isBauthError } from "./errors.js";
 export { computeCodeChallenge, generateCodeVerifier } from "./pkce.js";
 export type { components, paths } from "./schema.js";
 export { type AuthMiddlewareOptions, createAuthMiddleware } from "./middleware.js";
@@ -20,7 +20,15 @@ export {
 	accessTokenExpiry,
 	type AuthSession,
 	createSession,
+	type FetcherOptions,
 	type SessionOptions,
 	type StoredTokens,
 	type TokenStore,
 } from "./session.js";
+export {
+	type KeyValueStorage,
+	keyValueStore,
+	localStorageStore,
+	memoryStore,
+	type Store,
+} from "./stores.js";
