@@ -16,7 +16,7 @@ members = ["bauth_client", "bauth_core", "bauth_server"]
 [workspace.dependencies]
 # Web server
 axum = { version = "~0.8", features = ["macros", "multipart", "tracing"] }
-tokio = { version = "~1.53", features = [
+tokio = { version = "~1.54", features = [
   "fs",
   "macros",
   "net",
