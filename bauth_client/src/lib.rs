@@ -31,3 +31,4 @@ pub use verifier::Me;
 pub use verifier::MeError;
 pub use verifier::Verifier;
 pub use verifier::VerifyError;
+pub use verifier::WrongClient;

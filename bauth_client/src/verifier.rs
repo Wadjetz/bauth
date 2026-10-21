@@ -50,6 +50,26 @@ impl AuthUser {
     pub fn access_token(&self) -> &str {
         &self.token
     }
+
+    /// Restricts a route to the apps in `client_ids`, when several clients share this API's
+    /// `audience` (e.g. an admin app next to the public one). With the `axum` feature the error
+    /// answers 403 `forbidden`, so `user.require_client(&["admin"])?` works in a handler.
+    pub fn require_client(&self, client_ids: &[&str]) -> Result<(), WrongClient> {
+        if client_ids.contains(&self.client_id.as_str()) {
+            Ok(())
+        } else {
+            Err(WrongClient {
+                client_id: self.client_id.clone(),
+            })
+        }
+    }
+}
+
+/// The token is valid but was issued to an app this route doesn't serve (`require_client`).
+#[derive(Debug, thiserror::Error)]
+#[error("access token issued to client `{client_id}`, which this route doesn't serve")]
+pub struct WrongClient {
+    pub client_id: String,
 }
 
 /// The token is a credential: never printed.

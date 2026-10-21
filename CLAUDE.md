@@ -14,7 +14,8 @@ Rewrite started 2026-09 from a 2020 actix prototype: nothing of the old code is 
 
 ## Workspace
 Crates and dependencies: see `Cargo.toml` (`bauth_server` the server, `bauth_client` the token
-`Verifier` for APIs — plus `Verifier::me` (an API reading a token's email) and `AuthUser::access_token` —,
+`Verifier` for APIs — plus `Verifier::me` (an API reading a token's email), `AuthUser::access_token` and
+`AuthUser::require_client` (403 `forbidden`) —,
 `bauth_core` shared claims, `bauth_sdk` the `@wadjetz/bauth-client` TS SDK).
 The SDK needs **TypeScript 5** — `openapi-typescript` requires it.
 

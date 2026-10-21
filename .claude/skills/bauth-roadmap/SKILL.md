@@ -5,7 +5,8 @@ description: Parked ideas for bauth (kept for later, not planned), the audit fin
 
 # bauth — parked ideas
 
-Not planned. Don't start any of these unless the maintainer asks.
+Not planned. Don't start any of these unless the maintainer asks. Once an idea is done, delete it
+(no "Done" note; audit items below keep their numbered `Fixed` notes).
 The active scope is in `CLAUDE.md` (`## Scope`): magic link (+ 6-digit code), later Google.
 
 Earlier roadmap: audit log, per-client session TTL, emergency key rotation through an admin API,
@@ -62,10 +63,7 @@ Protocol
 - Loopback redirect with any port (RFC 8252 §7.3) for desktop apps (audit item 11).
 
 SDK & DX
-- `@wadjetz/bauth-client`: token store abstraction (memory / `localStorage` / Tauri secure storage), single-
-  flight auto refresh with a `fetch` wrapper, PKCE + magic-link helpers wired end to end, typed errors.
-- `bauth_client`: `AuthUser::require_client(..)` / roles helpers once roles exist; a `mock` feature
-  issuing test tokens without bauth.
+- `bauth_client`: roles helpers, once roles exist.
 - A tiny reference app (Vite page for login / magic-link / email change) usable by every
   client as a starting point, and a Playwright end-to-end test running it against bauth + Mailpit.
 
@@ -76,20 +74,7 @@ Scope: magic code, passwordless sign-up, unverified-account rule, `POST /me/conf
 continues. Once an item is fixed or decided, replace its text with a one-line `Fixed <date>: …`
 note instead of deleting it, so numbers stay stable.
 
-### Bugs
-24. *Fixed 2026-09-27: `change_email` checks the new address's rate limit before confirming; a
-    taken address still spends the code (checking it first would let a stolen token probe
-    accounts) — documented on the 202.*
-25. *Fixed 2026-09-26: each magic link email extends its flow to the email's expiry
-    (`greatest(expires_at, …)` in `count_magic_link_request`, bounded by the 3-emails cap).*
-26. *Fixed 2026-09-26: `magic_link::request` reads the flow, runs every check, then counts the
-    email with a conditional `UPDATE` (`magic_link_requests < 3`).*
-
 ### Security — decide
-27. *Moot 2026-10-02: no passwords; the code is the only confirmation*
-28. *Moot 2026-10-02: registration with a password removed*
-29. *Fixed 2026-10-02: one key per purpose (`magic_code::CodeKeys`: `derive("magic_code")` and
-    `derive("confirmation_code")`); `generate` / `verify` take an `owner` (flow or session).*
 30. **The raw master key is used directly as the HMAC key in `MasterKey::derive` and as the XChaCha20
     key.** Safe in practice (different primitives), but the usual rule is root key → one subkey per
     use. Deriving the cipher key too (`derive("encrypt")`) changes the key of existing `signing_keys`
@@ -107,10 +92,6 @@ note instead of deleting it, so numbers stay stable.
     `CODE_TTL`) and the format check (`magic_code::check_format`) are shared. The query trios and the
     attempt sequence stay per table: the locks differ and `sqlx::query!` can't take a table name, so a
     generic "spend one attempt" would cost more than it saves.*
-34. *Fixed 2026-10-02: `Recipient::Account(id) | Recipient::SignUp`; the two emails share `magic()`.*
-35. *Fixed 2026-10-02: `magic_link::log_in` has no `finish` detour nor `MagicLogin`/`notify` any more
-    (nothing to remove from an unverified account without passwords).*
-36. *Fixed 2026-10-02: `wrong_code` lives in `tests/mod.rs`; `login_with_code` is gone.*
 
 ### Hygiene
 37. **SDK formatting drift:** `bauth_sdk/src/client.ts` was reformatted with Biome's defaults (tabs,
@@ -121,9 +102,6 @@ note instead of deleting it, so numbers stay stable.
     `magic_link::request` for a disabled account (`disabled_at` set by SQL, like `tests/jobs.rs`).
 39. **`confirmations.action` is free text:** add `CHECK (action IN ('change_email',
     'delete_account'))` so a typo in `ConfirmationAction::as_str` can't create unreachable rows.
-40. *Fixed 2026-10-02: `me_confirmation.yml`; `me_email.yml` / `me_delete.yml` send its code.*
-41. *Fixed 2026-09-26: `createBauthClient` methods call each other through a local `client`, not `this`.*
-42. *Fixed 2026-10-02: CLAUDE.md names both codes as the exceptions to 256-bit tokens.*
 43. **`_check_sdk.yml` never packs:** an `npm pack --dry-run` (or publint) step would catch a broken
     `files` / `exports` before a release publishes it.
 
@@ -158,7 +136,6 @@ deleting it, so the numbering never shifts.
    or accept and document the trust in resource servers. Session revocation should count as sensitive.
    Note: `bauth_client::Verifier::me` calls `/me` with an API's token (`aud` of that API):
    restricting `aud` on `/me` must keep a way for APIs to read the email.
-8. *Moot 2026-10-02: password login removed, and `login_per_*` with it*
 9. **Trusted proxies by exact IP** (`rate_limit::parse_trusted_proxies`): the reverse proxy's address on a
    Docker network changes across restarts; when it isn't trusted (or doesn't forward `X-Forwarded-For`),
    every user shares one bucket and login is globally rate limited. Accept CIDRs (`ipnet`) and

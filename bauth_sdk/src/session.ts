@@ -3,8 +3,7 @@ import type { Middleware } from "openapi-fetch"
 import type { BauthClient, Tokens } from "./client.js"
 import { BauthError } from "./errors.js"
 import { createAuthMiddleware } from "./middleware.js"
-
-type MaybePromise<T> = T | Promise<T>
+import type { Store } from "./stores.js"
 
 /** What a session keeps between requests. */
 export interface StoredTokens {
@@ -17,11 +16,17 @@ export interface StoredTokens {
   expiresAt?: number
 }
 
-/** Where the tokens live: `localStorage`, `httpOnly` cookies, a Tauri store… */
-export interface TokenStore {
-  read(): MaybePromise<StoredTokens | undefined>
-  /** `undefined` ends the session: forget the tokens. */
-  write(tokens: StoredTokens | undefined): MaybePromise<void>
+/**
+ * Where the tokens live: `localStorageStore`, `memoryStore`, `keyValueStore` over a Tauri store
+ * or keychain, `httpOnly` cookies… Writing `undefined` ends the session: forget the tokens.
+ */
+export type TokenStore = Store<StoredTokens>
+
+export interface FetcherOptions {
+  /** Called when a request stays unauthorized after a refresh attempt (logout, redirect…). */
+  onUnauthorized?: () => void
+  /** The fetch to wrap (Tauri's plugin-http, SvelteKit's `event.fetch`…). Defaults to `globalThis.fetch`. */
+  fetch?: typeof globalThis.fetch
 }
 
 export interface SessionOptions {
@@ -51,6 +56,12 @@ export interface AuthSession {
   logout(): Promise<void>
   /** An openapi-fetch middleware for your APIs, backed by this session. */
   middleware(options?: { onUnauthorized?: () => void }): Middleware
+  /**
+   * A `fetch` for your APIs, backed by this session, when you don't use openapi-fetch: adds the
+   * bearer token (refreshed ahead of expiry) and replays a request once after a 401. Without a
+   * session the request goes out without `Authorization`.
+   */
+  fetcher(options?: FetcherOptions): typeof globalThis.fetch
 }
 
 const DEFAULT_EXPIRY_MARGIN_MS = 30_000
@@ -117,7 +128,38 @@ export function createSession({
         },
         refreshAccessToken: refresh,
         onUnauthorized: options?.onUnauthorized
-      })
+      }),
+    fetcher: (options = {}) =>
+      async (input, init) => {
+        const send = options.fetch ?? globalThis.fetch
+        const request = new Request(input, init)
+        const sent = await accessToken()
+        if (!sent) return send(request)
+
+        // Request bodies can be read once: keep a copy for the replay.
+        const replay = request.clone()
+        request.headers.set("Authorization", `Bearer ${sent}`)
+        const response = await send(request)
+        if (response.status !== 401) return response
+
+        // Another request may have refreshed meanwhile: use its token rather than rotate again.
+        const latest = (await store.read())?.accessToken
+        let next: string | undefined
+        try {
+          next = latest && latest !== sent ? latest : await refresh()
+        } catch {
+          // bauth unreachable: the session may still be good, don't log the user out.
+          return response
+        }
+        if (!next) {
+          options.onUnauthorized?.()
+          return response
+        }
+        replay.headers.set("Authorization", `Bearer ${next}`)
+        const retried = await send(replay)
+        if (retried.status === 401) options.onUnauthorized?.()
+        return retried
+      }
   }
 }
 

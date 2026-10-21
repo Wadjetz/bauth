@@ -1,7 +1,14 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import { BauthError, computeCodeChallenge, createBauthClient, generateCodeVerifier, tokenFromUrl } from "../dist/index.js"
+import {
+  BauthError,
+  computeCodeChallenge,
+  createBauthClient,
+  generateCodeVerifier,
+  isBauthError,
+  tokenFromUrl
+} from "../dist/index.js"
 
 /** Records requests and answers with the queued responses. */
 function fakeFetch(...responses) {
@@ -104,4 +111,24 @@ test("confirmMagicCode posts the code on the flow", async () => {
   assert.equal(await client.confirmMagicCode("f1", "042917"), "c1")
   assert.equal(requests[0].url, "https://auth.test/flows/login/f1/magic-code")
   assert.deepEqual(JSON.parse(requests[0].body), { code: "042917" })
+})
+
+test("an unreachable bauth is network_error; an abort stays an abort", async () => {
+  const offline = createBauthClient({ ...options, fetch: async () => { throw new TypeError("fetch failed") } })
+  const error = await offline.refresh("r").catch(e => e)
+  assert.ok(isBauthError(error, "network_error"))
+  assert.equal(error.status, 0)
+  assert.equal(error.cause.message, "fetch failed")
+
+  const abort = Object.assign(new Error("aborted"), { name: "AbortError" })
+  const aborted = createBauthClient({ ...options, fetch: async () => { throw abort } })
+  assert.equal(await aborted.refresh("r").catch(e => e), abort)
+})
+
+test("isBauthError narrows on codes", () => {
+  const error = new BauthError(400, "invalid_code", "")
+  assert.ok(isBauthError(error))
+  assert.ok(isBauthError(error, "flow_expired", "invalid_code"))
+  assert.ok(!isBauthError(error, "flow_expired"))
+  assert.ok(!isBauthError(new Error("x")))
 })

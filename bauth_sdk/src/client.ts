@@ -3,6 +3,7 @@ import createFetchClient from "openapi-fetch";
 import { BauthError } from "./errors.js";
 import { computeCodeChallenge, generateCodeVerifier } from "./pkce.js";
 import type { components, paths } from "./schema.js";
+import type { Store } from "./stores.js";
 
 type Schemas = components["schemas"];
 export type LoginMethod = Schemas["LoginMethod"];
@@ -45,17 +46,26 @@ export interface PendingMagicCode {
 	expiresAt: string;
 }
 
-/** Where the login in progress lives between the two screens: `localStorage`, a cookie… */
-export interface FlowStore {
-	read(): PendingMagicCode | undefined | Promise<PendingMagicCode | undefined>;
-	/** `undefined` forgets the flow. */
-	write(flow: PendingMagicCode | undefined): void | Promise<void>;
-}
+/**
+ * Where the login in progress lives between the two screens, and until the magic link comes back:
+ * `localStorageStore("bauth_flow")` in a browser (the link opens a new tab), a cookie on a server.
+ */
+export type FlowStore = Store<PendingMagicCode>;
 
 type FetchResult<T> = { data?: T; error?: unknown; response: Response };
 
 async function unwrap<T>(result: Promise<FetchResult<T>>): Promise<T> {
-	const { data, error, response } = await result;
+	let settled: FetchResult<T>;
+	try {
+		settled = await result;
+	} catch (error) {
+		// Aborts are the caller's own doing: let them through as they are.
+		if (error instanceof Error && error.name === "AbortError") throw error;
+		throw new BauthError(0, "network_error", "bauth is unreachable", undefined, {
+			cause: error,
+		});
+	}
+	const { data, error, response } = settled;
 	if (!response.ok) throw await BauthError.fromResponse(response, error);
 	return data as T;
 }
@@ -214,6 +224,30 @@ export function createBauthClient(options: BauthClientOptions) {
 				pending.flowId,
 				code.replace(/\D/g, ""),
 			);
+			const tokens = await exchangeCode(authorizationCode, pending.codeVerifier);
+			await store.write(undefined);
+			return tokens;
+		},
+
+		/**
+		 * On the page the magic link opens: turns the link into tokens with the flow in `store`
+		 * (written by `requestMagicCode`), then forgets the flow.
+		 *
+		 * Without a flow in `store` — the link was opened in another browser or on another device —
+		 * the link is **not** confirmed, since that would also disable the code: this throws
+		 * `flow_expired` and the page should ask the user to type the code where they started.
+		 * A link without `#token=` is `invalid_token`.
+		 */
+		async submitMagicLink(url: string | URL, store: FlowStore): Promise<Tokens> {
+			const token = tokenFromUrl(url);
+			if (!token) {
+				throw new BauthError(400, "invalid_token", "no #token= in the link");
+			}
+			const pending = await store.read();
+			if (!pending) {
+				throw new BauthError(400, "flow_expired", "no login in progress in this browser");
+			}
+			const authorizationCode = await client.confirmMagicLink(token);
 			const tokens = await exchangeCode(authorizationCode, pending.codeVerifier);
 			await store.write(undefined);
 			return tokens;
